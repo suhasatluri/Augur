@@ -21,6 +21,9 @@ node_modules/
 # Test output
 tests/batch_results.json
 
+# Prompt log — local only, never commit
+docs/PROMPTS.md
+
 # OS
 .DS_Store
 Thumbs.db
