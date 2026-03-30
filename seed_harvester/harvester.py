@@ -52,8 +52,11 @@ class SeedHarvester:
                 slow_cached = True
                 logger.info(f"[harvester] Slow layer cache hit for {ticker}")
 
+        ticker_bias_score = None
+        structured_data = None
+
         if not slow_cached:
-            slow_seeds = await harvest_slow(
+            slow_seeds, structured_data, ticker_bias_score = await harvest_slow(
                 self.client, ticker, company_name, reporting_period
             )
             if slow_seeds:
@@ -89,6 +92,8 @@ class SeedHarvester:
             slow_layer_cached=slow_cached,
             fast_layer_cached=fast_cached,
             harvest_duration_ms=round(elapsed, 1),
+            ticker_bias_score=ticker_bias_score,
+            structured_data=structured_data,
         )
 
         response.quality = score_harvest(response)

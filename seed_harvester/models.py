@@ -76,3 +76,5 @@ class HarvestResponse(BaseModel):
     fast_layer_cached: bool = False
     harvest_duration_ms: Optional[float] = None
     quality: Optional[QualityReport] = None
+    ticker_bias_score: Optional[float] = None
+    structured_data: Optional[dict] = None

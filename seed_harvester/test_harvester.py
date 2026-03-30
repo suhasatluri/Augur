@@ -31,6 +31,23 @@ async def main() -> None:
     harvester = SeedHarvester()
     result = await harvester.harvest(ticker=ticker, force_refresh=force)
 
+    # --- Structured Data & Bias Score ---
+    if result.ticker_bias_score is not None:
+        print(f"\n{'─'*60}")
+        print(f"  STRUCTURED DATA (yfinance)")
+        print(f"{'─'*60}")
+        yf = (result.structured_data or {}).get("source_yfinance", {})
+        print(f"  Company:     {yf.get('longName', 'N/A')}")
+        print(f"  Sector:      {yf.get('sector', 'N/A')} / {yf.get('industry', 'N/A')}")
+        print(f"  Price:       A${yf.get('currentPrice', 'N/A')}  →  Target: A${yf.get('targetMeanPrice', 'N/A')}")
+        print(f"  Rec:         {yf.get('recommendationMean', 'N/A')} ({yf.get('recommendationKey', 'N/A')})")
+        print(f"  EGrowth:     {yf.get('earningsGrowth', 'N/A')}   RevGrowth: {yf.get('revenueGrowth', 'N/A')}")
+        print(f"  ROE:         {yf.get('returnOnEquity', 'N/A')}   D/E: {yf.get('debtToEquity', 'N/A')}")
+        print(f"  fwdPE:       {yf.get('forwardPE', 'N/A')}   trPE: {yf.get('trailingPE', 'N/A')}")
+        print(f"  Earnings:    {yf.get('nextEarningsDate', 'N/A')}")
+        bias_bar = "▓" * int(result.ticker_bias_score * 20) + "░" * (20 - int(result.ticker_bias_score * 20))
+        print(f"\n  TICKER BIAS SCORE: {result.ticker_bias_score:.3f} [{bias_bar}]")
+
     # --- Quality Report ---
     q = result.quality
     print(f"\n{'─'*60}")
