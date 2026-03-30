@@ -173,18 +173,27 @@ async def _run_job(job_id: str, simulation_id: str, ticker: str, reporting_date:
 # Startup
 # ---------------------------------------------------------------------------
 
+_schema_ensured = False
+
+
+async def _ensure_schema_once() -> None:
+    """Lazy schema setup — called on first request that needs DB, not on startup."""
+    global _schema_ensured
+    if _schema_ensured or not os.getenv("DATABASE_URL"):
+        return
+    try:
+        await ensure_schema()
+        _schema_ensured = True
+        logger.info("[api] Neon schema ensured (lazy)")
+    except Exception as e:
+        logger.error(f"[api] Failed to ensure schema: {e}")
+
+
 @app.on_event("startup")
 async def startup() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     _load_api_keys()
-    if os.getenv("DATABASE_URL"):
-        try:
-            await ensure_schema()
-            logger.info("[api] Neon schema ensured")
-        except Exception as e:
-            logger.error(f"[api] Failed to ensure schema on startup: {e}")
-    else:
-        logger.warning("[api] DATABASE_URL not set — skipping schema setup")
+    logger.info("[api] App started — schema will be ensured on first DB request")
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +206,7 @@ async def simulate(
     x_api_key: Optional[str] = Header(None),
 ):
     """Start a new earnings prediction simulation."""
+    await _ensure_schema_once()
     key = _check_api_key(x_api_key)
     _check_rate_limit(key)
 
