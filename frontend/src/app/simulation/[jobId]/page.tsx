@@ -95,7 +95,7 @@ export default function SimulationPage() {
 
       {/* Progress tracker (while running) */}
       {isRunning && (
-        <ProgressTracker status={data.status} startedAt={startedAt.current} />
+        <ProgressTracker status={data.status} startedAt={startedAt.current} ticker={data.ticker} />
       )}
 
       {/* Failed state */}
