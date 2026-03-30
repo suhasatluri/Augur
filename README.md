@@ -12,6 +12,10 @@ earnings beat/miss before the company reports.
 ## Status
 🔨 Active development — V1 in progress
 
+## Learn How It Works
+- [Interactive Explainer](https://suhasatluri.github.io/Augur/docs/Augur_Explainer.html) — animated walkthrough for non-technical users
+- [Live Demo](https://augur.vercel.app)
+
 ## Stack
 - Python FastAPI · Neon PostgreSQL · Claude API
 - Next.js 14 · Cloudflare R2 · Railway
