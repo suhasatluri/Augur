@@ -18,6 +18,9 @@ node_modules/
 .vscode/
 .idea/
 
+# Test output
+tests/batch_results.json
+
 # OS
 .DS_Store
 Thumbs.db
