@@ -47,25 +47,26 @@ Return ONLY a JSON array of objects with keys: name, goals, methodology, known_b
 No markdown, no commentary — just the JSON array."""
 
 ARCHETYPE_PARAMS = {
+    # Calibration target: (0.72 + 0.30 + 0.50 + 0.40 + 0.58) / 5 = 0.50
     Archetype.BULL_ANALYST: {
         "risk_guidance": "generally high (0.6-0.9), bulls tolerate risk for upside",
-        "probability_guidance": "0.55-0.80 — bulls lean toward beat, but vary conviction",
+        "probability_guidance": "0.64-0.80 — bulls lean toward beat. You MUST spread values across this full range. Midpoint should be ~0.72. Do NOT cluster all values near the low end.",
     },
     Archetype.BEAR_ANALYST: {
         "risk_guidance": "moderate to low (0.2-0.5), bears are cautious by nature",
-        "probability_guidance": "0.20-0.45 — bears lean toward miss, but some are less extreme",
+        "probability_guidance": "0.22-0.38 — bears lean toward miss. Spread across range. Midpoint ~0.30.",
     },
     Archetype.QUANT_TRADER: {
         "risk_guidance": "varies widely (0.3-0.8), depends on model confidence",
-        "probability_guidance": "0.35-0.65 — quants cluster near base rate, driven by statistics",
+        "probability_guidance": "0.42-0.58 — quants cluster near base rate, symmetric around 0.50. Some should be ABOVE 0.50, some below.",
     },
     Archetype.RISK_OFFICER: {
         "risk_guidance": "low (0.1-0.4), risk officers are inherently conservative",
-        "probability_guidance": "0.25-0.50 — risk officers weight downside, rarely bullish",
+        "probability_guidance": "0.32-0.48 — risk officers weight downside but not extreme. Midpoint ~0.40.",
     },
     Archetype.RETAIL_INVESTOR: {
         "risk_guidance": "varies wildly (0.2-0.9), retail is heterogeneous",
-        "probability_guidance": "0.30-0.75 — retail follows recent sentiment, high variance",
+        "probability_guidance": "0.42-0.74 — retail follows sentiment, wide spread. Some should be strongly bullish (0.65+). Midpoint ~0.58.",
     },
 }
 
@@ -126,6 +127,17 @@ class PersonaForge:
                 logger.error(f"[forge] Failed to forge {arch.value}: {result}")
                 continue
             all_personas.extend(result)
+
+        # Calibration check — weighted average should be ~0.50
+        if all_personas:
+            avg_prob = sum(p.initial_probability for p in all_personas) / len(all_personas)
+            if not (0.47 <= avg_prob <= 0.53):
+                logger.warning(
+                    f"[forge] CALIBRATION WARNING: weighted avg initial_probability "
+                    f"= {avg_prob:.3f} (target 0.47-0.53) for {request.ticker}"
+                )
+            else:
+                logger.info(f"[forge] Calibration OK: avg initial_probability = {avg_prob:.3f}")
 
         # Store in DB
         stored_in_db = False

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import statistics
 import time
 from collections import defaultdict
@@ -33,7 +34,7 @@ from negotiation_runner.prompts import (
 
 logger = logging.getLogger(__name__)
 
-NUM_ROUNDS = 5
+NUM_ROUNDS = int(os.environ.get("SIMULATION_ROUNDS", "3"))
 HIGH_UNCERTAINTY_THRESHOLD = 0.25
 
 
@@ -95,10 +96,11 @@ class NegotiationRunner:
         self._db_url = database_url
         self.num_rounds = num_rounds
 
-    async def run(self, simulation_id: str, ticker: str) -> SimulationResult:
+    async def run(self, simulation_id: str, ticker: str, seed_summaries: list[str] | None = None) -> SimulationResult:
         """Execute a full negotiation simulation."""
         start = time.monotonic()
         pool = await get_pool(self._db_url)
+        self._seed_context = "\n".join(f"- {s}" for s in seed_summaries) if seed_summaries else "(no seed data)"
 
         # Load agents
         agents = await load_agents(pool, simulation_id)
@@ -271,6 +273,7 @@ class NegotiationRunner:
             ticker=ticker,
             round_number=round_number,
             total_rounds=self.num_rounds,
+            seed_context=self._seed_context,
             round_narrative=summary.narrative,
             mean_prob=summary.mean_probability,
             median_prob=summary.median_probability,

@@ -1,7 +1,7 @@
 """Prompt templates for negotiation rounds."""
 
 # Haiku generates a narrative summary of the round distribution
-ROUND_SUMMARY_PROMPT = """You are summarising a debate round for an ASX earnings prediction simulation.
+ROUND_SUMMARY_PROMPT = """You are a neutral moderator summarising a debate round for an ASX earnings prediction simulation.
 
 Ticker: {ticker}
 Round: {round_number} of {total_rounds}
@@ -15,9 +15,13 @@ Current probability distribution across {agent_count} analyst agents:
 
 {movement_note}
 
-Write a 2-3 sentence narrative summary of the current state of the debate.
-Focus on: where consensus is forming, which camps are strongest, and what the key disagreement is.
-Be specific and analytical — this will be shown to each agent before they update their view.
+Write a 2-3 sentence NEUTRAL summary of the current state of the debate.
+
+CRITICAL RULES:
+- Present this distribution factually. Do not use language that implies one side is winning unless the data clearly shows it (e.g., bull_count > 2× bear_count or vice versa).
+- Give equal airtime to both bull and bear arguments. Summarise the strongest point from each camp.
+- Do NOT use framing like "bears dominate", "bulls are losing ground", or "consensus is forming toward miss/beat" unless the numbers overwhelmingly support it.
+- If the distribution is roughly balanced (within 60/40 either way), describe it as "contested" or "divided" rather than leaning.
 
 Return ONLY the narrative text, no JSON, no formatting."""
 
@@ -26,6 +30,9 @@ DEBATE_BATCH_PROMPT = """You are running a negotiation round for an ASX earnings
 
 Ticker: {ticker}
 Round: {round_number} of {total_rounds}
+
+=== SEED INTELLIGENCE (key facts about this ticker) ===
+{seed_context}
 
 === ROUND SUMMARY (what the swarm currently believes) ===
 {round_narrative}
@@ -42,6 +49,8 @@ Process each agent below. For each one:
 - Agents with low conviction_threshold move easily; high conviction_threshold agents need strong evidence to shift
 - Movement should be realistic: most agents move 0.01-0.05 per round, rarely more than 0.10
 - Agents can move TOWARD or AWAY from consensus depending on their persona
+- IMPORTANT: Bulls with strong conviction should HOLD or MOVE UP if their thesis is intact — do NOT default to pulling all agents toward bearish consensus
+- Agents should move based on NEW information or compelling counter-arguments, not merely because the group mean is below 0.50
 
 {agent_blocks}
 

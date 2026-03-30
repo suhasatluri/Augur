@@ -69,7 +69,7 @@ async def run_full_pipeline(
     # --- Stage 3: Negotiation Runner ---
     logger.info("[pipeline] Stage 3/4: Negotiation Runner")
     runner = NegotiationRunner()
-    neg_result = await runner.run(simulation_id=simulation_id, ticker=ticker)
+    neg_result = await runner.run(simulation_id=simulation_id, ticker=ticker, seed_summaries=seed_summaries)
     logger.info(
         f"[pipeline] Negotiation complete: mean={neg_result.final_mean_probability:.3f} "
         f"convergence={neg_result.convergence_score:.3f}"
