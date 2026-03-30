@@ -102,3 +102,15 @@ export async function listSimulations(): Promise<SimulationListItem[]> {
   if (!res.ok) return [];
   return res.json();
 }
+
+export interface ActivityItem {
+  ticker: string;
+  count: number;
+  last_verdict: string | null;
+}
+
+export async function getActivity(): Promise<ActivityItem[]> {
+  const res = await fetch(`${API_URL}/activity`);
+  if (!res.ok) return [];
+  return res.json();
+}

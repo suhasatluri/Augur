@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import TickerInput from "@/components/TickerInput";
 import VerdictBadge from "@/components/VerdictBadge";
-import { startSimulation, listSimulations, SimulationListItem } from "@/lib/api";
+import { startSimulation, getActivity, ActivityItem } from "@/lib/api";
+
+const ACTIVITY_POLL = 60000; // 60s
 
 export default function Home() {
   const router = useRouter();
@@ -12,11 +14,17 @@ export default function Home() {
   const [reportingDate, setReportingDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [simulations, setSimulations] = useState<SimulationListItem[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+
+  const fetchActivity = useCallback(() => {
+    getActivity().then(setActivity).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    listSimulations().then(setSimulations).catch(() => {});
-  }, []);
+    fetchActivity();
+    const timer = setInterval(fetchActivity, ACTIVITY_POLL);
+    return () => clearInterval(timer);
+  }, [fetchActivity]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,10 +37,14 @@ export default function Home() {
       const res = await startSimulation(ticker, reportingDate);
       router.push(`/simulation/${res.job_id}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to start simulation");
+      setError(
+        err instanceof Error ? err.message : "Failed to start simulation"
+      );
       setLoading(false);
     }
   };
+
+  const maxCount = activity.length > 0 ? activity[0].count : 1;
 
   return (
     <div className="space-y-12">
@@ -67,9 +79,7 @@ export default function Home() {
           />
         </div>
 
-        {error && (
-          <p className="text-red-400 text-xs font-mono">{error}</p>
-        )}
+        {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
 
         <button
           type="submit"
@@ -80,40 +90,61 @@ export default function Home() {
         </button>
       </form>
 
-      {/* Recent simulations */}
-      {simulations.length > 0 && (
-        <div className="max-w-2xl mx-auto">
-          <h2 className="font-heading text-xl text-gold/80 mb-4">
-            Recent Simulations
+      {/* Community Activity */}
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-gold animate-pulse-gold">&#9673;</span>
+          <h2 className="font-heading text-xl text-gold/80">
+            Community Activity
           </h2>
+          <span className="text-xs text-muted font-mono ml-auto">today</span>
+        </div>
+
+        {activity.length > 0 ? (
           <div className="space-y-2">
-            {simulations.map((sim) => (
-              <div
-                key={sim.simulation_id}
-                className="flex items-center justify-between bg-surface border border-surface-border rounded px-4 py-3 hover:border-gold/30 transition"
-              >
-                <div className="flex items-center gap-4">
-                  <span className="font-mono text-gold text-sm">
-                    {sim.ticker}
+            {activity.map((item) => {
+              const barWidth = Math.max(
+                Math.round((item.count / maxCount) * 100),
+                8
+              );
+              return (
+                <button
+                  key={item.ticker}
+                  type="button"
+                  onClick={() => setTicker(item.ticker)}
+                  className="w-full flex items-center gap-4 bg-surface border border-surface-border rounded px-4 py-3 hover:border-gold/30 transition text-left"
+                >
+                  <span className="font-mono text-gold text-sm w-10">
+                    {item.ticker}
                   </span>
-                  <span className="text-xs text-muted font-mono">
-                    {sim.simulation_id}
+                  <div className="flex-1 h-3 bg-surface-light rounded overflow-hidden">
+                    <div
+                      className="h-full bg-gold/40 rounded transition-all duration-500"
+                      style={{ width: `${barWidth}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-muted font-mono w-28 text-right">
+                    {item.count} simulation{item.count !== 1 ? "s" : ""}
                   </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {sim.verdict ? (
-                    <VerdictBadge verdict={sim.verdict} />
+                  {item.last_verdict ? (
+                    <VerdictBadge verdict={item.last_verdict} />
                   ) : (
-                    <span className="text-xs font-mono text-muted uppercase">
-                      {sim.status}
+                    <span className="text-xs font-mono text-muted w-24 text-right">
+                      —
                     </span>
                   )}
-                </div>
-              </div>
-            ))}
+                </button>
+              );
+            })}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="bg-surface border border-surface-border rounded px-4 py-6 text-center">
+            <p className="text-muted text-sm font-mono">
+              No simulations yet today. Be the first to simulate a ticker.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

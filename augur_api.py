@@ -338,6 +338,55 @@ async def list_simulations(
     return items
 
 
+class ActivityItem(BaseModel):
+    ticker: str
+    count: int
+    last_verdict: Optional[str] = None
+
+
+@app.get("/activity", response_model=list[ActivityItem])
+async def activity():
+    """Top 5 most simulated tickers today. Public — no auth required."""
+    if not os.getenv("DATABASE_URL"):
+        return []
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT s.ticker,
+                       COUNT(*) as count,
+                       (SELECT s2.status FROM simulations s2
+                        WHERE s2.ticker = s.ticker
+                        ORDER BY s2.created_at DESC LIMIT 1) as last_status
+                FROM simulations s
+                WHERE s.created_at >= CURRENT_DATE
+                GROUP BY s.ticker
+                ORDER BY count DESC
+                LIMIT 5
+            """)
+    except Exception as e:
+        logger.error(f"[api] Activity query failed: {e}")
+        return []
+
+    items = []
+    for r in rows:
+        # Try to get verdict from in-memory jobs for the latest sim of this ticker
+        verdict = None
+        for job in reversed(list(_jobs.values())):
+            if job["ticker"] == r["ticker"] and job.get("result"):
+                verdict = job["result"].get("verdict")
+                break
+
+        items.append(ActivityItem(
+            ticker=r["ticker"],
+            count=r["count"],
+            last_verdict=verdict,
+        ))
+
+    return items
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check for Railway. Always returns 200 — even without DB."""
