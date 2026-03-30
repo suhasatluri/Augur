@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useParams } from "next/navigation";
 import { getSimulationStatus, SimulationStatus } from "@/lib/api";
 import ProgressTracker from "@/components/ProgressTracker";
 import VerdictBadge from "@/components/VerdictBadge";
@@ -10,12 +11,8 @@ import SentimentCascade from "@/components/SentimentCascade";
 
 const POLL_INTERVAL = 5000;
 
-export default function SimulationPage({
-  params,
-}: {
-  params: Promise<{ jobId: string }>;
-}) {
-  const { jobId } = use(params);
+export default function SimulationPage() {
+  const { jobId } = useParams<{ jobId: string }>();
   const [data, setData] = useState<SimulationStatus | null>(null);
   const [error, setError] = useState("");
   const startedAt = useRef(Date.now());
