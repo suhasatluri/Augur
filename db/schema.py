@@ -9,9 +9,6 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 SCHEMA_DDL = """
--- Drop legacy table from v0 scaffold
-DROP TABLE IF EXISTS agent_personas CASCADE;
-
 -- ============================================================
 -- simulations: top-level container for each prediction run
 -- ============================================================

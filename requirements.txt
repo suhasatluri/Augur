@@ -1,6 +1,6 @@
 anthropic
 fastapi
-uvicorn[standard]
+uvicorn
 asyncpg
 pydantic
 python-dotenv
