@@ -99,6 +99,11 @@ class PersonaForge:
         # Connect to DB (gracefully falls back to memory)
         await self.db.connect()
 
+        # Create simulation row
+        await self.db.ensure_simulation(
+            request.simulation_id, request.ticker,
+        )
+
         seed_context = self._build_seed_context(request.seed_summaries)
 
         # Fire all 5 archetypes in parallel
