@@ -1,11 +1,16 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY db/ db/
+COPY seed_harvester/ seed_harvester/
+COPY persona_forge/ persona_forge/
+COPY negotiation_runner/ negotiation_runner/
+COPY prediction_synthesiser/ prediction_synthesiser/
+COPY augur_api.py pipeline.py asx200.py ./
 
 EXPOSE 8000
 

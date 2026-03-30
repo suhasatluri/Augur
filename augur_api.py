@@ -177,11 +177,14 @@ async def _run_job(job_id: str, simulation_id: str, ticker: str, reporting_date:
 async def startup() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     _load_api_keys()
-    try:
-        await ensure_schema()
-        logger.info("[api] Neon schema ensured")
-    except Exception as e:
-        logger.error(f"[api] Failed to ensure schema on startup: {e}")
+    if os.getenv("DATABASE_URL"):
+        try:
+            await ensure_schema()
+            logger.info("[api] Neon schema ensured")
+        except Exception as e:
+            logger.error(f"[api] Failed to ensure schema on startup: {e}")
+    else:
+        logger.warning("[api] DATABASE_URL not set — skipping schema setup")
 
 
 # ---------------------------------------------------------------------------
@@ -316,15 +319,16 @@ async def list_simulations(
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
-    """Health check for Railway."""
+    """Health check for Railway. Always returns 200 — even without DB."""
     neon_ok = False
-    try:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
-        neon_ok = True
-    except Exception:
-        pass
+    if os.getenv("DATABASE_URL"):
+        try:
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                await conn.fetchval("SELECT 1")
+            neon_ok = True
+        except Exception:
+            pass
 
     active = sum(1 for j in _jobs.values() if j["status"] in ("queued", "running"))
 
