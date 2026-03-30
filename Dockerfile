@@ -11,6 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+# Smoke test — fail the build if the app can't import
+RUN python -c "import augur_api; print('Import OK')"
 
-CMD ["sh", "-c", "uvicorn augur_api:app --host 0.0.0.0 --port ${PORT:-8000}"]
+ENV PORT=8000
+
+CMD exec uvicorn augur_api:app --host 0.0.0.0 --port $PORT
