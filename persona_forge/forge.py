@@ -21,6 +21,27 @@ from persona_forge.models import (
 
 logger = logging.getLogger(__name__)
 
+# Archetype offsets from ticker_bias_score anchor
+_ARCHETYPE_OFFSETS = {
+    Archetype.BULL_ANALYST:    +0.18,
+    Archetype.BEAR_ANALYST:    -0.22,
+    Archetype.QUANT_TRADER:    +0.02,
+    Archetype.RISK_OFFICER:    -0.12,
+    Archetype.RETAIL_INVESTOR: +0.05,
+}
+
+
+def get_starting_probability(
+    archetype: Archetype,
+    ticker_bias_score: float,
+    instance: int,  # 0-9 for variation
+) -> float:
+    """Compute deterministic starting probability anchored to ticker_bias_score."""
+    variation = (instance - 4.5) * 0.02
+    raw = ticker_bias_score + _ARCHETYPE_OFFSETS[archetype] + variation
+    return max(0.10, min(0.90, round(raw, 4)))
+
+
 FORGE_PROMPT = """You are designing diverse analyst agent personas for an ASX earnings prediction simulation.
 
 Ticker: {ticker}
@@ -33,40 +54,40 @@ Seed intelligence (from harvester):
 
 Generate exactly {count} DISTINCT variations of this archetype. Each variation must have a unique personality, methodology, and initial probability estimate. Vary them meaningfully — don't just change names.
 
+NOTE: The initial_probability for each agent will be overridden by the calibration system. You should still provide a value in the right ballpark for this archetype ({probability_guidance}), but the exact value will be replaced. Focus on making the persona, goals, methodology, and reasoning unique.
+
 Variation guidelines:
 - Spread conviction_threshold across the range: some easily swayed (0.2-0.4), some stubborn (0.7-0.9)
 - Spread risk_tolerance to match: {risk_guidance}
-- initial_probability is P(earnings beat consensus). Spread across a realistic range for this archetype: {probability_guidance}
 - Give each a memorable 2-3 word name that reflects their personality
 - goals: 1-2 sentences on what this specific agent optimises for
 - methodology: 1-2 sentences on HOW they analyse (what data, what framework)
 - known_biases: 1 sentence on their specific cognitive bias pattern
-- initial_reasoning: 1-2 sentences explaining why they arrived at their initial_probability given the seed data
+- initial_reasoning: 1-2 sentences explaining why they arrived at their view given the seed data
 
 Return ONLY a JSON array of objects with keys: name, goals, methodology, known_biases, conviction_threshold, risk_tolerance, initial_probability, initial_reasoning.
 No markdown, no commentary — just the JSON array."""
 
 ARCHETYPE_PARAMS = {
-    # Calibration target: (0.72 + 0.30 + 0.50 + 0.40 + 0.58) / 5 = 0.50
     Archetype.BULL_ANALYST: {
         "risk_guidance": "generally high (0.6-0.9), bulls tolerate risk for upside",
-        "probability_guidance": "0.64-0.80 — bulls lean toward beat. You MUST spread values across this full range. Midpoint should be ~0.72. Do NOT cluster all values near the low end.",
+        "probability_guidance": "bullish range, above 0.60",
     },
     Archetype.BEAR_ANALYST: {
         "risk_guidance": "moderate to low (0.2-0.5), bears are cautious by nature",
-        "probability_guidance": "0.22-0.38 — bears lean toward miss. Spread across range. Midpoint ~0.30.",
+        "probability_guidance": "bearish range, below 0.40",
     },
     Archetype.QUANT_TRADER: {
         "risk_guidance": "varies widely (0.3-0.8), depends on model confidence",
-        "probability_guidance": "0.42-0.58 — quants cluster near base rate, symmetric around 0.50. Some should be ABOVE 0.50, some below.",
+        "probability_guidance": "near base rate, around 0.50",
     },
     Archetype.RISK_OFFICER: {
         "risk_guidance": "low (0.1-0.4), risk officers are inherently conservative",
-        "probability_guidance": "0.32-0.48 — risk officers weight downside but not extreme. Midpoint ~0.40.",
+        "probability_guidance": "cautious range, below 0.50",
     },
     Archetype.RETAIL_INVESTOR: {
         "risk_guidance": "varies wildly (0.2-0.9), retail is heterogeneous",
-        "probability_guidance": "0.42-0.74 — retail follows sentiment, wide spread. Some should be strongly bullish (0.65+). Midpoint ~0.58.",
+        "probability_guidance": "wide range, sentiment-driven",
     },
 }
 
@@ -79,7 +100,14 @@ def _parse_json_response(raw: str) -> list[dict]:
         if text.endswith("```"):
             text = text[: text.rfind("```")]
         text = text.strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("[")
+        end = text.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
 
 
 class PersonaForge:
@@ -96,6 +124,14 @@ class PersonaForge:
     async def forge(self, request: ForgeRequest) -> ForgeResponse:
         """Generate all personas for a simulation. 5 parallel API calls (one per archetype)."""
         start = time.monotonic()
+
+        # Resolve ticker_bias_score
+        bias = request.ticker_bias_score
+        if bias is None:
+            bias = 0.50
+            logger.warning(f"[forge] No bias score for {request.ticker} — using neutral anchor 0.50")
+        else:
+            logger.info(f"[forge] Using ticker_bias_score={bias:.3f} for {request.ticker}")
 
         # Connect to DB (gracefully falls back to memory)
         await self.db.connect()
@@ -115,6 +151,7 @@ class PersonaForge:
                 simulation_id=request.simulation_id,
                 seed_context=seed_context,
                 count=request.agents_per_archetype,
+                ticker_bias_score=bias,
             )
             for arch in Archetype
         ]
@@ -128,16 +165,17 @@ class PersonaForge:
                 continue
             all_personas.extend(result)
 
-        # Calibration check — weighted average should be ~0.50
+        # Calibration check — weighted average should be near ticker_bias_score
         if all_personas:
             avg_prob = sum(p.initial_probability for p in all_personas) / len(all_personas)
-            if not (0.47 <= avg_prob <= 0.53):
+            delta = abs(avg_prob - bias)
+            if delta > 0.05:
                 logger.warning(
-                    f"[forge] CALIBRATION WARNING: weighted avg initial_probability "
-                    f"= {avg_prob:.3f} (target 0.47-0.53) for {request.ticker}"
+                    f"[forge] CALIBRATION WARNING: avg={avg_prob:.3f} vs bias={bias:.3f} "
+                    f"(delta={delta:.3f}) for {request.ticker}"
                 )
             else:
-                logger.info(f"[forge] Calibration OK: avg initial_probability = {avg_prob:.3f}")
+                logger.info(f"[forge] Calibration OK: avg={avg_prob:.3f} ≈ bias={bias:.3f}")
 
         # Store in DB
         stored_in_db = False
@@ -163,6 +201,7 @@ class PersonaForge:
         simulation_id: str,
         seed_context: str,
         count: int,
+        ticker_bias_score: float,
     ) -> list[AgentPersona]:
         """Generate all variations for a single archetype via one Sonnet call."""
 
@@ -198,6 +237,9 @@ class PersonaForge:
         personas: list[AgentPersona] = []
         for i, item in enumerate(items[:count]):
             try:
+                # Override Sonnet's probability with deterministic calibrated value
+                calibrated_prob = get_starting_probability(archetype, ticker_bias_score, i)
+
                 persona = AgentPersona(
                     simulation_id=simulation_id,
                     archetype=archetype,
@@ -208,7 +250,7 @@ class PersonaForge:
                     known_biases=item["known_biases"],
                     conviction_threshold=float(item["conviction_threshold"]),
                     risk_tolerance=float(item["risk_tolerance"]),
-                    initial_probability=float(item["initial_probability"]),
+                    initial_probability=calibrated_prob,
                     initial_reasoning=item.get("initial_reasoning", ""),
                 )
                 personas.append(persona)
