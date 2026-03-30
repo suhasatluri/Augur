@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import { ASX200_TICKERS } from "@/lib/asx200";
 
+const QUICK_PICKS = ["BHP", "CBA", "RIO", "WES", "ANZ", "WBC"];
+
 interface TickerInputProps {
   value: string;
   onChange: (v: string) => void;
@@ -52,7 +54,7 @@ export default function TickerInput({ value, onChange }: TickerInputProps) {
         className="w-full bg-surface border border-surface-border rounded px-4 py-3 text-lg font-mono text-gold placeholder:text-muted/40 focus:outline-none focus:border-gold/50 transition"
         maxLength={4}
       />
-      {open && filtered.length > 0 && (
+      {open && filtered.length > 0 && value.length > 0 && (
         <ul className="absolute z-10 w-full mt-1 bg-surface border border-surface-border rounded shadow-lg max-h-48 overflow-y-auto">
           {filtered.map((t) => (
             <li
@@ -65,6 +67,22 @@ export default function TickerInput({ value, onChange }: TickerInputProps) {
           ))}
         </ul>
       )}
+      <div className="flex gap-2 mt-2">
+        {QUICK_PICKS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => select(t)}
+            className={`px-3 py-1 rounded text-xs font-mono border transition ${
+              value === t
+                ? "bg-gold/20 border-gold text-gold"
+                : "bg-surface border-surface-border text-muted hover:border-gold/40 hover:text-gold"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

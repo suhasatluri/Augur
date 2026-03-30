@@ -25,17 +25,34 @@ export default function SwingFactors({ factors }: SwingFactorsProps) {
               </span>
             </div>
 
-            {/* Disagreement bar */}
+            {/* Contention bar */}
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-xs text-muted w-24">Disagreement</span>
               <div className="flex-1 h-2 bg-surface-light rounded overflow-hidden">
                 <div
-                  className="h-full bg-gold/70 rounded transition-all duration-500"
+                  className={`h-full rounded transition-all duration-500 ${
+                    f.disagreement_score >= 0.7
+                      ? "bg-red-500"
+                      : f.disagreement_score >= 0.4
+                      ? "bg-gold/70"
+                      : "bg-emerald-500"
+                  }`}
                   style={{ width: `${barWidth}%` }}
                 />
               </div>
-              <span className="text-xs font-mono text-foreground w-10 text-right">
-                {f.disagreement_score.toFixed(2)}
+              <span
+                className={`text-xs font-mono tracking-wider w-32 text-right ${
+                  f.disagreement_score >= 0.7
+                    ? "text-red-400"
+                    : f.disagreement_score >= 0.4
+                    ? "text-gold"
+                    : "text-emerald-400"
+                }`}
+              >
+                {f.disagreement_score >= 0.7
+                  ? "HIGH CONTENTION"
+                  : f.disagreement_score >= 0.4
+                  ? "CONTESTED"
+                  : "CONSENSUS"}
               </span>
             </div>
 
