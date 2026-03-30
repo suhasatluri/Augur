@@ -109,8 +109,10 @@ export interface ActivityItem {
   last_verdict: string | null;
 }
 
-export async function getActivity(): Promise<ActivityItem[]> {
-  const res = await fetch(`${API_URL}/activity`);
+export async function getActivity(
+  period: "today" | "week" = "today"
+): Promise<ActivityItem[]> {
+  const res = await fetch(`${API_URL}/activity?period=${period}`);
   if (!res.ok) return [];
   return res.json();
 }

@@ -345,25 +345,30 @@ class ActivityItem(BaseModel):
 
 
 @app.get("/activity", response_model=list[ActivityItem])
-async def activity():
-    """Top 5 most simulated tickers today. Public — no auth required."""
+async def activity(period: str = "today"):
+    """Top tickers by simulation count. Public — no auth required.
+
+    Query param: period = "today" (default) or "week".
+    """
     if not os.getenv("DATABASE_URL"):
         return []
+
+    cutoff = "CURRENT_DATE" if period != "week" else "CURRENT_DATE - INTERVAL '7 days'"
 
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("""
+            rows = await conn.fetch(f"""
                 SELECT s.ticker,
                        COUNT(*) as count,
                        (SELECT s2.status FROM simulations s2
                         WHERE s2.ticker = s.ticker
                         ORDER BY s2.created_at DESC LIMIT 1) as last_status
                 FROM simulations s
-                WHERE s.created_at >= CURRENT_DATE
+                WHERE s.created_at >= {cutoff}
                 GROUP BY s.ticker
                 ORDER BY count DESC
-                LIMIT 5
+                LIMIT 6
             """)
     except Exception as e:
         logger.error(f"[api] Activity query failed: {e}")
