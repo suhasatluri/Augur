@@ -12,6 +12,7 @@ from seed_harvester.cache import LayeredCache
 from seed_harvester.fast_layer import check_asx_announcements, harvest_fast
 from seed_harvester.slow_layer import harvest_slow
 from seed_harvester.models import Seed, HarvestResponse
+from seed_harvester.quality import score_harvest
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +83,13 @@ class SeedHarvester:
 
         elapsed = (time.monotonic() - start) * 1000
 
-        return HarvestResponse(
+        response = HarvestResponse(
             ticker=ticker,
             seeds=all_seeds,
             slow_layer_cached=slow_cached,
             fast_layer_cached=fast_cached,
             harvest_duration_ms=round(elapsed, 1),
         )
+
+        response.quality = score_harvest(response)
+        return response

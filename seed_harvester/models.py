@@ -56,6 +56,17 @@ class HarvestRequest(BaseModel):
     layers: list[str] = Field(default_factory=lambda: ["slow", "fast"])
 
 
+class QualityReport(BaseModel):
+    """Quality assessment of a harvest run."""
+
+    overall_score: float = Field(ge=0.0, le=1.0)
+    category_coverage: dict[str, int] = Field(default_factory=dict)
+    avg_confidence: float = 0.0
+    warnings: list[str] = Field(default_factory=list)
+    has_earnings_history: bool = False
+    has_consensus: bool = False
+
+
 class HarvestResponse(BaseModel):
     """Response containing harvested seeds."""
 
@@ -64,3 +75,4 @@ class HarvestResponse(BaseModel):
     slow_layer_cached: bool = False
     fast_layer_cached: bool = False
     harvest_duration_ms: Optional[float] = None
+    quality: Optional[QualityReport] = None
