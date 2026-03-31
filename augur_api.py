@@ -120,6 +120,7 @@ class SimulationStatusResponse(BaseModel):
     simulation_id: str
     ticker: str
     status: str
+    reporting_date: Optional[str] = None
     result: Optional[dict] = None
     error: Optional[str] = None
     disclaimer: str = DISCLAIMER
@@ -282,6 +283,7 @@ async def simulate(
         "status": "queued",
         "simulation_id": simulation_id,
         "ticker": ticker,
+        "reporting_date": body.reporting_date or None,
         "result": None,
         "error": None,
     }
@@ -313,6 +315,7 @@ async def get_simulation(
         simulation_id=job["simulation_id"],
         ticker=job["ticker"],
         status=job["status"],
+        reporting_date=job.get("reporting_date"),
         result=job.get("result"),
         error=job.get("error"),
     )

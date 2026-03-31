@@ -69,7 +69,7 @@ export default function Home() {
 
         <div>
           <label className="block text-xs text-muted mb-1 tracking-widest uppercase">
-            Reporting Date (optional)
+            Reporting Date (recommended)
           </label>
           <input
             type="date"
@@ -77,6 +77,9 @@ export default function Home() {
             onChange={(e) => setReportingDate(e.target.value)}
             className="w-full bg-surface border border-surface-border rounded px-4 py-3 text-sm font-mono text-foreground focus:outline-none focus:border-gold/50 transition [color-scheme:dark]"
           />
+          <p className="text-xs text-muted/60 mt-1">
+            Enter the expected earnings date for more accurate macro context
+          </p>
         </div>
 
         {error && <p className="text-red-400 text-xs font-mono">{error}</p>}

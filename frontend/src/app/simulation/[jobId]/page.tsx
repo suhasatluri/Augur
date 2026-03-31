@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { getSimulationStatus, SimulationStatus } from "@/lib/api";
+import DateBanner from "@/components/DateBanner";
 import ProgressTracker from "@/components/ProgressTracker";
 import VerdictBadge from "@/components/VerdictBadge";
 import ProbabilityBars from "@/components/ProbabilityBars";
@@ -92,6 +93,9 @@ export default function SimulationPage() {
           </span>
         )}
       </div>
+
+      {/* Date context banner */}
+      <DateBanner ticker={data.ticker} reportingDate={data.reporting_date} />
 
       {/* Progress tracker (while running) */}
       {isRunning && (

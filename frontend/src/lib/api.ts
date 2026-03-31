@@ -56,6 +56,7 @@ export interface SimulationStatus {
   simulation_id: string;
   ticker: string;
   status: "queued" | "running" | "complete" | "failed";
+  reporting_date: string | null;
   result: PredictionResult | null;
   error: string | null;
   disclaimer: string;
