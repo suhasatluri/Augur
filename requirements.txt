@@ -6,3 +6,6 @@ pydantic
 python-dotenv
 yfinance
 lxml
+pytest
+pytest-asyncio
+pytest-mock
