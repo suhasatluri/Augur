@@ -66,6 +66,12 @@ STORAGE_SECRET_KEY — R2 secret key
 
 ## Test Commands
 ```bash
+# Unit tests (23 tests, runs in ~2s)
+python3 -m pytest tests/unit/ -v
+
+# Historical validation dry-run (no simulations)
+python3 tests/historical_validate.py --dry-run
+
 # Quick 3-ticker validation
 python3 tests/quick_validate.py
 
@@ -86,8 +92,8 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - DATABASE_URL
 
 ## V2 Priorities
-1. Unit test suite (tests/unit/)
+1. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
 2. Outcome tracking (outcomes table exists, needs ingestion)
 3. User accounts + simulation history
-4. Beat/miss history data source
+4. Beat/miss history data source (marketindex + ASX API both dead — see private/TODO.md)
 5. Email alerts for upcoming earnings
