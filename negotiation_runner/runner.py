@@ -9,6 +9,7 @@ import os
 import statistics
 import time
 from collections import defaultdict
+from datetime import date, datetime
 from typing import Optional
 
 import anthropic
@@ -96,11 +97,26 @@ class NegotiationRunner:
         self._db_url = database_url
         self.num_rounds = num_rounds
 
-    async def run(self, simulation_id: str, ticker: str, seed_summaries: list[str] | None = None) -> SimulationResult:
+    async def run(self, simulation_id: str, ticker: str, seed_summaries: list[str] | None = None, reporting_date: str | None = None) -> SimulationResult:
         """Execute a full negotiation simulation."""
         start = time.monotonic()
         pool = await get_pool(self._db_url)
         self._seed_context = "\n".join(f"- {s}" for s in seed_summaries) if seed_summaries else "(no seed data)"
+
+        # Build date context for debate prompts
+        if reporting_date:
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            try:
+                days_until = (date.fromisoformat(reporting_date) - date.fromisoformat(today)).days
+                self._date_context = (
+                    f"\nRemember: {ticker} reports on {reporting_date}. "
+                    f"{days_until} days from today ({today}). "
+                    f"Debate what is likely to happen BY THEN — not what is true right now.\n"
+                )
+            except ValueError:
+                self._date_context = ""
+        else:
+            self._date_context = ""
 
         # Load agents
         agents = await load_agents(pool, simulation_id)
@@ -273,6 +289,7 @@ class NegotiationRunner:
             ticker=ticker,
             round_number=round_number,
             total_rounds=self.num_rounds,
+            date_context=self._date_context,
             seed_context=self._seed_context,
             round_narrative=summary.narrative,
             mean_prob=summary.mean_probability,

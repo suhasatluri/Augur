@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import date, datetime
 from typing import Optional
 
 import anthropic
@@ -42,13 +43,40 @@ def get_starting_probability(
     return max(0.10, min(0.90, round(raw, 4)))
 
 
+def _build_date_context(ticker: str, reporting_date: Optional[str]) -> str:
+    """Build reporting date context block for prompts."""
+    if not reporting_date:
+        return ""
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    try:
+        rd = date.fromisoformat(reporting_date)
+        td = date.fromisoformat(today)
+        days_until = (rd - td).days
+    except ValueError:
+        days_until = None
+
+    days_str = f"{days_until} days" if days_until is not None else "unknown days"
+    return f"""
+REPORTING CONTEXT:
+Company: {ticker}
+Reporting date: {reporting_date}
+Today: {today}
+Days until announcement: {days_str}
+
+Your analysis must be grounded in what conditions will look like ON {reporting_date} — not just today. Consider:
+- What macro conditions are expected by then?
+- What will peers have reported by then?
+- What events between now and {reporting_date} could change the outlook?
+"""
+
+
 FORGE_PROMPT = """You are designing diverse analyst agent personas for an ASX earnings prediction simulation.
 
 Ticker: {ticker}
 Archetype: {archetype_label}
 Focus: {archetype_focus}
 Known bias pattern: {archetype_bias}
-
+{date_context}
 Seed intelligence (from harvester):
 {seed_context}
 
@@ -142,6 +170,7 @@ class PersonaForge:
         )
 
         seed_context = self._build_seed_context(request.seed_summaries)
+        date_context = _build_date_context(request.ticker, request.reporting_date)
 
         # Fire all 5 archetypes in parallel
         tasks = [
@@ -152,6 +181,7 @@ class PersonaForge:
                 seed_context=seed_context,
                 count=request.agents_per_archetype,
                 ticker_bias_score=bias,
+                date_context=date_context,
             )
             for arch in Archetype
         ]
@@ -202,6 +232,7 @@ class PersonaForge:
         seed_context: str,
         count: int,
         ticker_bias_score: float,
+        date_context: str = "",
     ) -> list[AgentPersona]:
         """Generate all variations for a single archetype via one Sonnet call."""
 
@@ -213,6 +244,7 @@ class PersonaForge:
             archetype_label=desc["label"],
             archetype_focus=desc["focus"],
             archetype_bias=desc["bias"],
+            date_context=date_context,
             seed_context=seed_context,
             count=count,
             risk_guidance=params["risk_guidance"],

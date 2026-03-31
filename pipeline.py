@@ -65,6 +65,7 @@ async def run_full_pipeline(
         seed_summaries=seed_summaries,
         agents_per_archetype=10,
         ticker_bias_score=ticker_bias,
+        reporting_date=reporting_date or None,
     )
     forge_result = await forge.forge(forge_request)
     logger.info(f"[pipeline] Forged {forge_result.total_count} personas")
@@ -72,7 +73,10 @@ async def run_full_pipeline(
     # --- Stage 3: Negotiation Runner ---
     logger.info("[pipeline] Stage 3/4: Negotiation Runner")
     runner = NegotiationRunner()
-    neg_result = await runner.run(simulation_id=simulation_id, ticker=ticker, seed_summaries=seed_summaries)
+    neg_result = await runner.run(
+        simulation_id=simulation_id, ticker=ticker,
+        seed_summaries=seed_summaries, reporting_date=reporting_date or None,
+    )
     logger.info(
         f"[pipeline] Negotiation complete: mean={neg_result.final_mean_probability:.3f} "
         f"convergence={neg_result.convergence_score:.3f}"

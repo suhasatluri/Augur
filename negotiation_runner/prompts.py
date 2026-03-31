@@ -30,7 +30,7 @@ DEBATE_BATCH_PROMPT = """You are running a negotiation round for an ASX earnings
 
 Ticker: {ticker}
 Round: {round_number} of {total_rounds}
-
+{date_context}
 === SEED INTELLIGENCE (key facts about this ticker) ===
 {seed_context}
 

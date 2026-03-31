@@ -90,6 +90,7 @@ class ForgeRequest(BaseModel):
     seed_summaries: list[str] = Field(default_factory=list)
     agents_per_archetype: int = Field(default=10, ge=1, le=20)
     ticker_bias_score: Optional[float] = None
+    reporting_date: Optional[str] = None
 
 
 class ForgeResponse(BaseModel):
