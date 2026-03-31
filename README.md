@@ -10,7 +10,9 @@ multi-round debate, returns a probability distribution of
 earnings beat/miss before the company reports.
 
 ## Status
-🔨 Active development — V1 in progress
+V1.1 uses real-time yfinance data for calibration. Verdict distribution now reflects actual analyst consensus and financial fundamentals per ticker.
+
+Live at [augur.vercel.app](https://augur.vercel.app)
 
 ## Learn How It Works
 - [Interactive Explainer](https://suhasatluri.github.io/Augur/docs/Augur_Explainer.html) — animated walkthrough for non-technical users
