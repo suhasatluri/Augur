@@ -21,6 +21,9 @@ node_modules/
 # Test output
 tests/batch_results.json
 
+# Historical validation data — private
+data/asx100_earnings_history.csv
+
 # Private docs — local only, never commit
 docs/PROMPTS.md
 private/
