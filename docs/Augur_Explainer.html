@@ -402,6 +402,73 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
   </div>
 </section>
 
+<!-- ═══ VERDICTS ═══ -->
+<section class="section" id="verdicts">
+  <div class="section-inner">
+    <div class="section-eyebrow">Understanding Results</div>
+    <h2 class="section-title">What the<br><em>verdicts mean.</em></h2>
+    <p class="section-desc">Every simulation ends with a verdict. Here's what each one tells you — in plain language, not finance jargon.</p>
+
+    <div style="max-width:680px;margin:0 auto">
+      <!-- Scale bar -->
+      <div style="display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:24px">
+        <div style="flex:1;background:#E74C3C"></div>
+        <div style="flex:1;background:rgba(231,76,60,.5)"></div>
+        <div style="flex:1;background:rgba(201,168,76,.5)"></div>
+        <div style="flex:1;background:rgba(76,175,125,.5)"></div>
+        <div style="flex:1;background:#4CAF7D"></div>
+      </div>
+
+      <!-- Verdict cards -->
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid #E74C3C;background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E74C3C;white-space:nowrap;min-width:110px;font-weight:500">LIKELY MISS</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">The group strongly expects a miss</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">Most agents believe earnings will fall short of what analysts predicted. High conviction.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid rgba(231,76,60,.6);background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(231,76,60,.8);white-space:nowrap;min-width:110px;font-weight:500">LEAN MISS</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">More agents lean bearish, but it's not a strong call</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">The group tilts toward a miss, but there's meaningful disagreement. Moderate conviction.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid var(--gold);background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);white-space:nowrap;min-width:110px;font-weight:500">TOSS-UP</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">Genuinely uncertain — the group is split</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">Roughly equal arguments for beat and miss. The swing factors section tells you where they disagreed.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid rgba(76,175,125,.6);background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(76,175,125,.8);white-space:nowrap;min-width:110px;font-weight:500">LEAN BEAT</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">More agents lean bullish, but it's not a strong call</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">The group tilts toward a beat, but bears made valid counter-arguments. Moderate conviction.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid #4CAF7D;background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4CAF7D;white-space:nowrap;min-width:110px;font-weight:500">LIKELY BEAT</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">The group strongly expects a beat</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">Most agents believe earnings will exceed expectations. Strong analyst consensus and financial data support.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:24px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">
+        Each verdict is based on 50 agents debating across 3 rounds, anchored to real financial data.
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══ WHY ═══ -->
 <section class="section" style="background:var(--surface)" id="why">
   <div class="section-inner">

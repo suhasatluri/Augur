@@ -9,6 +9,7 @@ import VerdictBadge from "@/components/VerdictBadge";
 import ProbabilityBars from "@/components/ProbabilityBars";
 import SwingFactors from "@/components/SwingFactors";
 import SentimentCascade from "@/components/SentimentCascade";
+import VerdictScale from "@/components/VerdictScale";
 
 const POLL_INTERVAL = 5000;
 
@@ -128,6 +129,7 @@ export default function SimulationPage() {
                 bandLow={result.distribution.confidence_band_low}
                 bandHigh={result.distribution.confidence_band_high}
               />
+              <VerdictScale verdict={result.verdict} />
             </div>
           </section>
 
