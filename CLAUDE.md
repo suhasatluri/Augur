@@ -79,6 +79,12 @@ python3 seed_harvester/test_harvester.py BHP --force
 python3 tests/batch_test.py
 ```
 
+## GitHub Actions
+CI runs on every push/PR to main. Weekly regression on Sunday 2am AEST.
+GitHub Actions needs these secrets set in repository Settings -> Secrets:
+- ANTHROPIC_API_KEY
+- DATABASE_URL
+
 ## V2 Priorities
 1. Unit test suite (tests/unit/)
 2. Outcome tracking (outcomes table exists, needs ingestion)
