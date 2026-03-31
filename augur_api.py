@@ -200,10 +200,30 @@ async def _ensure_schema_once() -> None:
         logger.error(f"[api] Failed to ensure schema: {e}")
 
 
+async def _cleanup_stale_simulations() -> None:
+    """Mark simulations stuck in 'running' for >10 minutes as 'failed'."""
+    if not os.getenv("DATABASE_URL"):
+        return
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute("""
+                UPDATE simulations
+                SET status = 'failed', completed_at = NOW()
+                WHERE status IN ('running', 'negotiating', 'forging')
+                  AND created_at < NOW() - INTERVAL '10 minutes'
+            """)
+            if result and result != "UPDATE 0":
+                logger.info(f"[api] Stale simulation cleanup: {result}")
+    except Exception as e:
+        logger.warning(f"[api] Stale cleanup failed: {e}")
+
+
 @app.on_event("startup")
 async def startup() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     _load_api_keys()
+    await _cleanup_stale_simulations()
     logger.info("[api] App started — schema will be ensured on first DB request")
 
 
