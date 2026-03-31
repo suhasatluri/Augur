@@ -4,3 +4,5 @@ uvicorn
 asyncpg
 pydantic
 python-dotenv
+yfinance
+lxml

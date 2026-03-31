@@ -56,12 +56,15 @@ async def run_full_pipeline(
 
     # --- Stage 2: Persona Forge ---
     logger.info("[pipeline] Stage 2/4: Persona Forge")
+    ticker_bias = harvest.ticker_bias_score
+    logger.info(f"[pipeline] ticker_bias_score={ticker_bias}")
     forge = PersonaForge()
     forge_request = ForgeRequest(
         simulation_id=simulation_id,
         ticker=ticker,
         seed_summaries=seed_summaries,
         agents_per_archetype=10,
+        ticker_bias_score=ticker_bias,
     )
     forge_result = await forge.forge(forge_request)
     logger.info(f"[pipeline] Forged {forge_result.total_count} personas")
