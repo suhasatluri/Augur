@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { getSimulationStatus, SimulationStatus } from "@/lib/api";
+import ConfidenceIndicator, { UncertaintyWarning } from "@/components/ConfidenceIndicator";
 import DateBanner from "@/components/DateBanner";
 import ProgressTracker from "@/components/ProgressTracker";
 import VerdictBadge from "@/components/VerdictBadge";
@@ -82,7 +83,12 @@ export default function SimulationPage() {
             {data.simulation_id} &middot; {jobId}
           </p>
         </div>
-        {isDone && result && <VerdictBadge verdict={result.verdict} />}
+        {isDone && result && (
+          <div className="flex items-center gap-1">
+            <VerdictBadge verdict={result.verdict} />
+            <ConfidenceIndicator convergenceScore={result.convergence_score} />
+          </div>
+        )}
         {isRunning && (
           <span className="text-xs font-mono text-gold animate-pulse-gold uppercase">
             {data.status}
@@ -97,6 +103,11 @@ export default function SimulationPage() {
 
       {/* Date context banner */}
       <DateBanner ticker={data.ticker} reportingDate={data.reporting_date} />
+
+      {/* Uncertainty warning */}
+      {isDone && result && (
+        <UncertaintyWarning convergenceScore={result.convergence_score} />
+      )}
 
       {/* Progress tracker (while running) */}
       {isRunning && (
