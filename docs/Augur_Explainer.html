@@ -233,7 +233,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
       <div class="analogy-side right" id="an-right">
         <div class="analogy-box">
           <div class="analogy-box-title">A room of 50 specialists</div>
-          <div class="analogy-box-body">The optimists make their case. The pessimists push back. The cautious ones flag risks everyone else missed. After 5 rounds of debate, you know exactly where they disagreed — and why.</div>
+          <div class="analogy-box-body">The optimists make their case. The pessimists push back. The cautious ones flag risks everyone else missed. After 3 rounds of structured debate, you know exactly where they disagreed — and why.</div>
           <div class="analogy-verdict verdict-good">Richer picture</div>
         </div>
       </div>
@@ -291,13 +291,13 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
 <section class="section" style="background:var(--surface)" id="debate">
   <div class="section-inner">
     <div class="section-eyebrow">The Debate</div>
-    <h2 class="section-title">They argue.<br><em>Five rounds.</em></h2>
+    <h2 class="section-title">They argue.<br><em>Three rounds.</em></h2>
     <p class="section-desc">Each round, every agent sees what the others are thinking — and decides whether to hold their position or change their mind. Watch how opinion shifts across rounds for a real BHP simulation.</p>
 
     <div class="debate-arena">
       <div class="debate-header">
         <div class="debate-title-bar">BHP Group — Earnings Simulation</div>
-        <div class="round-indicator" id="round-display">Round 0 / 5</div>
+        <div class="round-indicator" id="round-display">Round 0 / 3</div>
       </div>
       <div class="debate-body">
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.08em;margin-bottom:16px;text-transform:uppercase">Probability of beating earnings consensus</div>
@@ -306,40 +306,24 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
             <div class="round-num">Round 1</div>
             <div class="round-content">
               <div class="round-bar-track"><div class="round-bar-fill" id="rb0" style="width:0%;background:var(--gold)"></div></div>
-              <div class="round-stats"><span>P(beat): 45.6%</span><span>22 bears · 17 neutral · 11 bulls</span></div>
-              <div class="round-note">Bears dominate from round 1 — China headwinds and cost pressure are the main concerns.</div>
+              <div class="round-stats"><span>P(beat): 55.4%</span><span>9 bears · 20 neutral · 21 bulls</span></div>
+              <div class="round-note">Agents anchor to real yfinance data — analyst consensus "hold" with +7.8% upside shapes opening positions.</div>
             </div>
           </div>
           <div class="round-row" id="rr1">
             <div class="round-num">Round 2</div>
             <div class="round-content">
               <div class="round-bar-track"><div class="round-bar-fill" id="rb1" style="width:0%;background:var(--gold)"></div></div>
-              <div class="round-stats"><span>P(beat): 45.0%</span><span>23 bears · 16 neutral · 11 bulls</span></div>
-              <div class="round-note">Sceptics and Numbers agents start agreeing on margin pressure — neutrals shifting bear.</div>
+              <div class="round-stats"><span>P(beat): 54.8%</span><span>11 bears · 19 neutral · 20 bulls</span></div>
+              <div class="round-note">Bears push back on iron ore pricing. Quant traders hold near centre. Bulls defend copper thesis.</div>
             </div>
           </div>
           <div class="round-row" id="rr2">
             <div class="round-num">Round 3</div>
             <div class="round-content">
               <div class="round-bar-track"><div class="round-bar-fill" id="rb2" style="width:0%;background:var(--gold)"></div></div>
-              <div class="round-stats"><span>P(beat): 44.1%</span><span>25 bears · 15 neutral · 10 bulls</span></div>
-              <div class="round-note">Key shift: Risk Watchers flag iron ore price weakness as a structural concern, not temporary.</div>
-            </div>
-          </div>
-          <div class="round-row" id="rr3">
-            <div class="round-num">Round 4</div>
-            <div class="round-content">
-              <div class="round-bar-track"><div class="round-bar-fill" id="rb3" style="width:0%;background:var(--gold)"></div></div>
-              <div class="round-stats"><span>P(beat): 43.5%</span><span>25 bears · 15 neutral · 10 bulls</span></div>
-              <div class="round-note">Bulls hold their ground but can't convert others — guidance history isn't strong enough.</div>
-            </div>
-          </div>
-          <div class="round-row" id="rr4">
-            <div class="round-num">Round 5</div>
-            <div class="round-content">
-              <div class="round-bar-track"><div class="round-bar-fill" id="rb4" style="width:0%;background:var(--crimson)"></div></div>
-              <div class="round-stats"><span style="color:var(--crimson)">P(beat): 43.2% → LEAN MISS</span><span>26 bears · 14 neutral · 10 bulls</span></div>
-              <div class="round-note">Final verdict: bears won the argument. The swarm leans toward a miss.</div>
+              <div class="round-stats"><span style="color:var(--gold)">P(beat): 53.6% → TOSS-UP</span><span>13 bears · 18 neutral · 19 bulls</span></div>
+              <div class="round-note">Final verdict: a contested call. The swarm is genuinely divided — real data grounds the debate.</div>
             </div>
           </div>
         </div>
@@ -365,7 +349,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
       <div class="output-body">
         <div class="out-left">
           <div class="out-ticker">BHP.ASX</div>
-          <div class="out-label">Probability Distribution · 50 agents · 5 rounds</div>
+          <div class="out-label">Probability Distribution · 50 agents · 3 rounds</div>
           <div class="prob-item">
             <div class="prob-row"><span style="color:var(--green-bright)">Will beat expectations</span><span style="color:var(--green-bright)">26%</span></div>
             <div class="prob-track"><div class="prob-fill" id="pb0" style="width:0%;background:var(--green)"></div></div>
@@ -438,7 +422,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
       <div class="why-card" id="wc2">
         <div class="why-num">03 — Honesty</div>
         <div class="why-title">It tells you when it doesn't know</div>
-        <div class="why-body">When agents stay widely split after 5 rounds, Augur flags HIGH UNCERTAINTY. It won't give you false confidence. A tool that admits uncertainty is more useful than one that always sounds sure.</div>
+        <div class="why-body">When agents stay widely split after 3 rounds, Augur flags HIGH UNCERTAINTY. It won't give you false confidence. A tool that admits uncertainty is more useful than one that always sounds sure.</div>
       </div>
     </div>
   </div>
@@ -609,8 +593,6 @@ const targets = {
   'rr0': document.getElementById('rr0'),
   'rr1': document.getElementById('rr1'),
   'rr2': document.getElementById('rr2'),
-  'rr3': document.getElementById('rr3'),
-  'rr4': document.getElementById('rr4'),
   'output-mock': document.getElementById('output-mock'),
   'wc0': document.getElementById('wc0'),
   'wc1': document.getElementById('wc1'),
@@ -622,13 +604,13 @@ const delays = {
   'pc1': 0, 'pc2': 150,
   'an-left': 0, 'an-vs': 200, 'an-right': 100,
   'ag0': 0, 'ag1': 100, 'ag2': 200, 'ag3': 300, 'ag4': 400,
-  'rr0': 0, 'rr1': 300, 'rr2': 600, 'rr3': 900, 'rr4': 1200,
+  'rr0': 0, 'rr1': 300, 'rr2': 600,
   'output-mock': 0,
   'wc0': 0, 'wc1': 150, 'wc2': 300,
 };
 
 // Round bar widths
-const roundWidths = [45.6, 45.0, 44.1, 43.5, 43.2];
+const roundWidths = [55.4, 54.8, 53.6];
 
 const obs = new IntersectionObserver((entries) => {
   entries.forEach(entry => {
@@ -645,7 +627,7 @@ const obs = new IntersectionObserver((entries) => {
         setTimeout(() => {
           const bar = document.getElementById('rb'+idx);
           if (bar) bar.style.width = roundWidths[idx] + '%';
-          document.getElementById('round-display').textContent = `Round ${idx+1} / 5`;
+          document.getElementById('round-display').textContent = `Round ${idx+1} / 3`;
         }, 200);
       }
 
