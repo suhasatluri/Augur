@@ -165,6 +165,21 @@ CREATE TABLE IF NOT EXISTS asx_calendar (
 );
 
 CREATE INDEX IF NOT EXISTS idx_asx_calendar_date ON asx_calendar(expected_reporting_date);
+
+-- ============================================================
+-- asx_company_intel: quarterly updates + investor presentations (TTL 7 days)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asx_company_intel (
+    ticker              TEXT PRIMARY KEY,
+    quarterly_data      JSONB,
+    presentation_data   JSONB,
+    combined_signals    JSONB,
+    quarterly_pdf_url   TEXT,
+    presentation_pdf_url TEXT,
+    harvested_at        TIMESTAMPTZ DEFAULT NOW(),
+    next_refresh_at     TIMESTAMPTZ,
+    data_confidence     TEXT
+);
 """
 
 _pool = None

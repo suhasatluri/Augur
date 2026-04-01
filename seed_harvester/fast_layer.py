@@ -22,12 +22,13 @@ Next expected earnings report: {reporting_period}
 
 The slow layer has already produced these fundamental seeds:
 {slow_layer_summary}
-
+{company_intel_section}
 Your job is to identify what has CHANGED or what ADDITIONAL sentiment signals exist that the fundamental analysis above does NOT cover. Do NOT repeat or rephrase the slow layer seeds.
 
 Focus ONLY on:
 1. SENTIMENT — analyst tone shifts, consensus revisions, notable commentary from brokers or management. Describe the DIRECTION and NATURE of sentiment, not fabricated numbers.
 2. MACRO — any recent macro developments (last 1-2 weeks) that could shift the earnings outlook vs. what the slow layer already captured.
+3. LEADING INDICATORS — if quarterly intelligence is provided above, assess how those operational signals translate to likely earnings direction.
 
 CRITICAL RULES:
 - You do NOT have access to live market data. Do NOT fabricate specific trading volumes, short interest percentages, share prices, or social media metrics.
@@ -43,6 +44,54 @@ Confidence calibration:
 
 Return ONLY a JSON array of objects with keys: seed_type, content, confidence, source, reasoning.
 No markdown, no commentary — just the JSON array. Return an empty array [] if no meaningful delta exists."""
+
+
+async def _get_company_intel_section(ticker: str) -> str:
+    """Fetch company intel from Neon and format as prompt section."""
+    try:
+        from db.schema import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT combined_signals, data_confidence FROM asx_company_intel WHERE ticker = $1",
+                ticker.upper(),
+            )
+            if not row or not row["combined_signals"]:
+                return ""
+
+            signals = json.loads(row["combined_signals"])
+            lines = ["\nQUARTERLY INTELLIGENCE (from company IR documents):"]
+
+            outlook = signals.get("overall_outlook", "unknown")
+            lines.append(f"Overall outlook: {outlook}")
+
+            margin = signals.get("margin_trend", "UNKNOWN")
+            cost = signals.get("cost_trend", "UNKNOWN")
+            if margin != "UNKNOWN" or cost != "UNKNOWN":
+                lines.append(f"Margin trend: {margin} | Cost trend: {cost}")
+
+            if signals.get("guidance_update"):
+                lines.append(f"Guidance: {signals['guidance_update']}")
+            if signals.get("guidance_language"):
+                lines.append(f"Management tone: {signals['guidance_language']}")
+
+            indicators = signals.get("leading_indicators", [])
+            if indicators:
+                lines.append("Leading indicators:")
+                for ind in indicators[:7]:
+                    lines.append(f"  - {ind}")
+
+            risks = signals.get("risks", [])
+            if risks:
+                lines.append("Risks flagged:")
+                for r in risks[:3]:
+                    lines.append(f"  - {r}")
+
+            lines.append(f"Data confidence: {row['data_confidence']}")
+            return "\n".join(lines)
+    except Exception as e:
+        logger.debug(f"[fast_layer] Company intel lookup failed for {ticker}: {e}")
+        return ""
 
 
 async def harvest_fast(
@@ -65,12 +114,16 @@ async def harvest_fast(
     else:
         slow_summary = "(no slow layer seeds available)"
 
+    # Fetch company intel from Neon (pre-harvested quarterly data)
+    company_intel_section = await _get_company_intel_section(ticker)
+
     current_date = datetime.utcnow().strftime("%Y-%m-%d")
     prompt = FAST_LAYER_PROMPT.format(
         ticker=ticker,
         current_date=current_date,
         reporting_period=reporting_period,
         slow_layer_summary=slow_summary,
+        company_intel_section=company_intel_section,
     )
 
     logger.info(f"[fast_layer] Harvesting {ticker} via Haiku...")

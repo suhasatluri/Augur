@@ -1,6 +1,6 @@
 ## Project Overview
-Augur — swarm intelligence platform for ASX earnings prediction. V1.1 live at augur.vercel.app.
-50 autonomous AI analyst agents debate earnings outcomes, anchored to real yfinance financial data.
+Augur — swarm intelligence platform for ASX earnings prediction. V1.2 live at augur.vercel.app.
+50 autonomous AI analyst agents debate earnings outcomes, anchored to proprietary ASX data pipeline.
 BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 
 ## Architecture
@@ -9,13 +9,14 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 - Frontend: Next.js 14 on Vercel
 - Storage: Cloudflare R2 (seed cache)
 - Queue: Upstash Redis (job queue)
-- LLM: Claude API (Sonnet for agents, Haiku for summaries)
-- Data: yfinance for structured financial data
+- LLM: Claude API (Sonnet for agents + PDF extraction, Haiku for summaries)
+- Data: ASX Markit API + PDFExtractor + yfinance (supplementary)
 - Edge: Cloudflare (always stays regardless of cloud)
 
 ## Pipeline Flow
 POST /simulate → augur_api.py → pipeline.py →
-seed_harvester (yfinance + Claude web_search) →
+asx_scraper (ASX API + PDF extraction + company intel) →
+seed_harvester (yfinance + Claude web_search + company intel) →
 persona_forge (50 agents, bias-anchored) →
 negotiation_runner (3 rounds) →
 prediction_synthesiser → results in Neon
@@ -23,14 +24,22 @@ prediction_synthesiser → results in Neon
 ## Key Files
 - augur_api.py — FastAPI endpoints, job queue
 - pipeline.py — orchestrates full simulation
+- asx_scraper/asx_api.py — ASX Markit Digital API client (official ASX data)
+- asx_scraper/pdf_extractor.py — downloads + extracts data from Appendix 4D/4E PDFs
+- asx_scraper/ir_harvester.py — finds earnings PDFs from company IR pages
+- asx_scraper/company_intel.py — quarterly updates + investor presentations
+- asx_scraper/orchestrator.py — runs full scrape pipeline per ticker
+- asx_scraper/price_scraper.py — yfinance price reactions on earnings dates
+- asx_scraper/metrics_computer.py — beat_rate, credibility scores from asx_earnings
+- asx_scraper/finnhub_client.py — Finnhub API (disabled — US consensus, kept for reference)
 - seed_harvester/harvester.py — two-layer cache
 - seed_harvester/slow_layer.py — yfinance + Sonnet
-- seed_harvester/fast_layer.py — Haiku, date-anchored
-- seed_harvester/structured_data.py — yfinance wrapper, ticker_bias_score computation
+- seed_harvester/fast_layer.py — Haiku sentiment + company intel integration
+- seed_harvester/structured_data.py — 5-component ticker_bias_score
 - persona_forge/forge.py — 50 agent creation
 - negotiation_runner/runner.py — 3-round debate
 - prediction_synthesiser/synthesiser.py — final report
-- db/schema.py — Neon PostgreSQL schema
+- db/schema.py — Neon PostgreSQL schema (11 tables)
 - frontend/src/app/ — Next.js App Router pages
 
 ## Critical Rules
@@ -49,35 +58,44 @@ AUGUR_API_KEYS — comma-separated API keys
 STORAGE_ENDPOINT — Cloudflare R2 endpoint
 STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
-FINNHUB_API_KEY — Finnhub.io free tier (consensus EPS for dual-listed ASX tickers)
+FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 
 ## Key Decisions Made
-- yfinance replaces Claude web_search for structured financial data (earnings_history empty for ASX — use growth/consensus instead)
+- Built proprietary ASX data pipeline — PDFExtractor reads official Appendix 4D/4E documents directly. CompanyIntelHarvester fetches quarterly updates and presentations from company IR pages. No third-party data dependency for historical results.
+- ASX Markit Digital API (asx.api.markitdigital.com) is the primary data source — free, no API key, official ASX data
+- Finnhub disabled for ASX — US-listed consensus diverges from ASX analyst expectations (different market, currency, analyst pool)
+- Price reaction proxy for beat/miss — measures actual ASX market response (>+3% BEAT, <-3% MISS)
+- ticker_bias_score uses 5 components: recommendation (28%), upside (22%), growth (20%), beat rate (20%), company intel (10%)
+- yfinance is supplementary for current prices/recommendations — not primary data source
 - 3 rounds not 5 (diminishing returns after round 3)
 - Neon not Supabase (India outage incident)
 - BSL 1.1 not MIT (commercial protection)
-- ticker_bias_score anchors agent starting probabilities to real financial data
 - reporting_date flows through entire pipeline for date-anchored macro context
 
 ## Current Known Limitations
 - ASX 200 only
-- Beat/miss history unavailable via yfinance for ASX — using analyst consensus proxy
+- Beat/miss uses price reaction proxy (no free ASX consensus EPS source found)
+- BHP PDFs timeout from bhp.com CDN — ASX API provides fallback data
 - Simulation duration ~170s
 - No user accounts in V1
+- Company intel limited to top 20 tickers with known IR page URLs
 
 ## Test Commands
 ```bash
 # Unit tests (23 tests, runs in ~2s)
 python3 -m pytest tests/unit/ -v
 
+# ASX scraper — single ticker
+python3 -m asx_scraper CBA
+
+# ASX scraper — show stored data
+python3 -m asx_scraper --show CBA
+
 # Historical validation dry-run (no simulations)
 python3 tests/historical_validate.py --dry-run
 
 # Quick 3-ticker validation
 python3 tests/quick_validate.py
-
-# Date-anchored validation
-python3 tests/date_validate.py
 
 # Seed harvest test
 python3 seed_harvester/test_harvester.py BHP --force
@@ -94,7 +112,9 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 
 ## V2 Priorities
 1. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
-2. Outcome tracking (outcomes table exists, needs ingestion)
-3. User accounts + simulation history
-4. Beat/miss history data source (marketindex + ASX API both dead — see private/TODO.md)
-5. Email alerts for upcoming earnings
+2. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
+3. Outcome tracking (outcomes table exists, needs ingestion)
+4. User accounts + simulation history
+5. Bootstrap asx_scraper across full ASX 100
+6. Schedule weekly asx_scraper refresh via GitHub Actions cron
+7. Email alerts for upcoming earnings

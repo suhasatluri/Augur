@@ -193,6 +193,23 @@ class StructuredDataFetcher:
                     data["source_yfinance"]["sector"] = company["sector"]
                     data["source_yfinance"]["industry"] = company["industry"]
 
+                # Fetch company intel outlook
+                try:
+                    intel = await conn.fetchrow(
+                        "SELECT combined_signals FROM asx_company_intel WHERE ticker = $1",
+                        ticker.upper(),
+                    )
+                    if intel and intel["combined_signals"]:
+                        import json as _json
+                        signals = _json.loads(intel["combined_signals"])
+                        data["source_company_intel"] = {
+                            "overall_outlook": signals.get("overall_outlook"),
+                            "margin_trend": signals.get("margin_trend"),
+                            "cost_trend": signals.get("cost_trend"),
+                        }
+                except Exception as e:
+                    logger.debug(f"[structured] Company intel lookup failed for {ticker}: {e}")
+
                 # Still need yfinance for price/recommendation data
                 try:
                     import yfinance as yf
@@ -217,21 +234,30 @@ class StructuredDataFetcher:
             return None
 
     def compute_ticker_bias_score(self, data: dict) -> tuple[float, dict]:
-        """Compute ticker_bias_score from structured data. Returns (score, breakdown)."""
+        """Compute ticker_bias_score from structured data. Returns (score, breakdown).
+
+        5 components:
+        1. Recommendation (28%) — analyst buy/hold/sell consensus
+        2. Upside (22%) — target price vs current price
+        3. Growth (20%) — earnings growth rate
+        4. Beat rate (20%) — historical beat/miss from price proxy
+        5. Intel (10%) — quarterly outlook from company intel harvester
+        """
         yf_data = data.get("source_yfinance", {})
         sa_data = data.get("source_stockanalysis", {})
+        intel_data = data.get("source_company_intel", {})
 
         breakdown = {}
 
-        # 1. Recommendation component (35%)
+        # 1. Recommendation component (28%)
         rec_mean = yf_data.get("recommendationMean")
         if rec_mean is not None and 1.0 <= rec_mean <= 5.0:
             rec_component = (5.0 - rec_mean) / 4.0
         else:
             rec_component = 0.5
-        breakdown["rec_component"] = {"value": rec_component, "raw": rec_mean, "weight": 0.35}
+        breakdown["rec_component"] = {"value": rec_component, "raw": rec_mean, "weight": 0.28}
 
-        # 2. Upside component (25%)
+        # 2. Upside component (22%)
         target = yf_data.get("targetMeanPrice")
         current = yf_data.get("currentPrice")
         if target is not None and current is not None and current > 0:
@@ -240,7 +266,7 @@ class StructuredDataFetcher:
         else:
             upside_component = 0.5
             upside = None
-        breakdown["upside_component"] = {"value": upside_component, "raw_upside": upside, "weight": 0.25}
+        breakdown["upside_component"] = {"value": upside_component, "raw_upside": upside, "weight": 0.22}
 
         # 3. Growth component (20%)
         eg = yf_data.get("earningsGrowth")
@@ -258,12 +284,23 @@ class StructuredDataFetcher:
             beat_component = 0.5
         breakdown["beat_rate_component"] = {"value": beat_component, "raw": beat_rate, "weight": 0.20}
 
+        # 5. Intel component (10%) — company quarterly outlook
+        intel_outlook = intel_data.get("overall_outlook")
+        if intel_outlook == "positive":
+            intel_component = 0.70
+        elif intel_outlook == "negative":
+            intel_component = 0.30
+        else:
+            intel_component = 0.50
+        breakdown["intel_component"] = {"value": intel_component, "raw": intel_outlook, "weight": 0.10}
+
         # Final score
         score = (
-            rec_component * 0.35
-            + upside_component * 0.25
+            rec_component * 0.28
+            + upside_component * 0.22
             + growth_component * 0.20
             + beat_component * 0.20
+            + intel_component * 0.10
         )
         score = _clamp(score, 0.20, 0.80)
 
