@@ -63,6 +63,107 @@ CREATE TABLE IF NOT EXISTS round_results (
 CREATE INDEX IF NOT EXISTS idx_rounds_simulation ON round_results(simulation_id);
 CREATE INDEX IF NOT EXISTS idx_rounds_agent ON round_results(agent_id);
 CREATE INDEX IF NOT EXISTS idx_rounds_round ON round_results(simulation_id, round_number);
+
+-- ============================================================
+-- asx_companies: company master data (refreshed weekly)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asx_companies (
+    ticker          TEXT PRIMARY KEY,
+    company_name    TEXT,
+    sector          TEXT,
+    industry        TEXT,
+    market_cap_aud  BIGINT,
+    shares_on_issue BIGINT,
+    fiscal_year_end TEXT,       -- e.g. "JUN", "DEC", "MAR"
+    ir_page_url     TEXT,
+    last_updated    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- asx_earnings: one row per reporting period per company
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asx_earnings (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker                  TEXT NOT NULL,
+    period                  TEXT NOT NULL,       -- e.g. "H1 FY2025"
+    reporting_date          DATE NOT NULL,
+    result_type             TEXT,                -- "HALF_YEAR" or "FULL_YEAR"
+
+    -- Actuals
+    revenue_aud_m           FLOAT,
+    npat_aud_m              FLOAT,
+    eps_basic_cents         FLOAT,
+    eps_diluted_cents       FLOAT,
+    dividend_cents          FLOAT,
+
+    -- vs consensus
+    eps_consensus_cents     FLOAT,
+    revenue_consensus_aud_m FLOAT,
+    beat_miss               TEXT,                -- BEAT / MISS / INLINE / UNKNOWN
+    surprise_pct            FLOAT,
+
+    -- Price reaction
+    price_day_before        FLOAT,
+    price_day_after         FLOAT,
+    price_reaction_pct      FLOAT,
+    price_implied_result    TEXT,                -- BEAT / MISS / INLINE
+
+    -- Source
+    announcement_url        TEXT,
+    data_source             TEXT,                -- pdf / price_proxy / web_search
+    data_confidence         TEXT,                -- HIGH / MED / LOW
+    extracted_at            TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(ticker, reporting_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asx_earnings_ticker ON asx_earnings(ticker);
+CREATE INDEX IF NOT EXISTS idx_asx_earnings_date ON asx_earnings(reporting_date);
+
+-- ============================================================
+-- asx_commentary: management quotes per result
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asx_commentary (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker          TEXT NOT NULL,
+    reporting_date  DATE NOT NULL,
+    quote           TEXT NOT NULL,
+    quote_type      TEXT,            -- guidance / outlook / risk / positive
+    extracted_from  TEXT,            -- PDF filename
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_asx_commentary_ticker ON asx_commentary(ticker);
+
+-- ============================================================
+-- asx_metrics: computed metrics per company (refreshed after each scrape)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asx_metrics (
+    ticker                  TEXT PRIMARY KEY,
+    beat_rate_8q            FLOAT,
+    beat_rate_4q            FLOAT,
+    avg_surprise_pct        FLOAT,
+    guidance_delivery_rate  FLOAT,
+    mgmt_credibility_score  FLOAT,
+    data_confidence         TEXT,       -- HIGH / MED / LOW
+    quarters_available      INT,
+    last_computed           TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- asx_calendar: upcoming earnings dates
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asx_calendar (
+    ticker                  TEXT NOT NULL,
+    expected_reporting_date  DATE NOT NULL,
+    result_type             TEXT,
+    confirmed               BOOLEAN DEFAULT FALSE,
+    source                  TEXT,
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (ticker, expected_reporting_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asx_calendar_date ON asx_calendar(expected_reporting_date);
 """
 
 _pool = None
