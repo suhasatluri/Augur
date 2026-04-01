@@ -8,6 +8,8 @@ import time
 
 from asx_scraper.company_scraper import CompanyScraper
 from asx_scraper.announcements_scraper import AnnouncementsScraper
+from asx_scraper.ir_harvester import IRHarvester
+from asx_scraper.pdf_extractor import PDFExtractor
 from asx_scraper.price_scraper import PriceScraper
 from asx_scraper.metrics_computer import MetricsComputer
 
@@ -34,6 +36,8 @@ class ScraperOrchestrator:
     def __init__(self) -> None:
         self.company = CompanyScraper()
         self.announcements = AnnouncementsScraper()
+        self.ir_harvester = IRHarvester()
+        self.pdf_extractor = PDFExtractor()
         self.prices = PriceScraper()
         self.metrics = MetricsComputer()
 
@@ -62,14 +66,36 @@ class ScraperOrchestrator:
         except Exception as e:
             errors.append(f"company: {e}")
 
-        # 2. Announcements + PDF extraction
+        # 2. Earnings extraction (IR harvester → web_search fallback)
         try:
-            results = await self.announcements.scrape(ticker)
-            summary["announcements_found"] = len(results)
-            summary["quarters_extracted"] = sum(1 for r in results if r.get("saved_to_db"))
-            summary["extracted_records"] = results
+            extracted = await self.ir_harvester.harvest_all(ticker)
+            summary["announcements_found"] = len(extracted)
+
+            # Upsert each extracted record to DB
+            saved = 0
+            for rec in extracted:
+                ok = await self.announcements._upsert_earnings(
+                    ticker, rec, {"pdf_url": rec.get("_pdf_url", ""), "title": rec.get("period", "")}
+                )
+                if ok:
+                    saved += 1
+            summary["quarters_extracted"] = saved
+            summary["extracted_records"] = [
+                {
+                    "ticker": ticker,
+                    "period": r.get("period"),
+                    "reporting_date": r.get("reporting_date"),
+                    "revenue_aud_m": r.get("revenue_aud_m"),
+                    "npat_aud_m": r.get("npat_aud_m"),
+                    "eps_basic_cents": r.get("eps_basic_cents"),
+                    "dividend_cents": r.get("dividend_final_cents") or r.get("dividend_interim_cents"),
+                    "data_confidence": r.get("data_confidence"),
+                    "saved_to_db": True,
+                }
+                for r in extracted
+            ]
         except Exception as e:
-            errors.append(f"announcements: {e}")
+            errors.append(f"earnings: {e}")
 
         # 3. Price reactions
         try:

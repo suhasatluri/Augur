@@ -56,10 +56,22 @@ def _print_ticker_summary(summary: dict):
 
     if summary.get("extracted_records"):
         print(f"\n  Extracted earnings:")
+        print(f"    {'Period':<15} {'Date':<12} {'Rev($m)':<10} {'NPAT($m)':<10} {'EPS(c)':<8} {'Div(c)':<8} {'Conf'}")
+        print(f"    {'-'*15} {'-'*12} {'-'*10} {'-'*10} {'-'*8} {'-'*8} {'-'*6}")
         for r in summary["extracted_records"]:
+            rev = r.get("revenue_aud_m")
+            npat = r.get("npat_aud_m")
             eps = r.get("eps_basic_cents")
-            eps_str = f"{eps:.1f}c" if eps else "N/A"
-            print(f"    {r.get('period', 'N/A'):15s}  EPS={eps_str:>8s}  conf={r.get('data_confidence', '?')}")
+            div = r.get("dividend_cents")
+            print(
+                f"    {str(r.get('period', '')):<15} "
+                f"{str(r.get('reporting_date', '')):<12} "
+                f"{f'{rev:,.0f}' if rev else '—':>10} "
+                f"{f'{npat:,.0f}' if npat else '—':>10} "
+                f"{f'{eps:.1f}' if eps else '—':>8} "
+                f"{f'{div:.0f}' if div else '—':>8} "
+                f"{r.get('data_confidence', '?')}"
+            )
 
     if summary["errors"]:
         print(f"\n  Errors:")
