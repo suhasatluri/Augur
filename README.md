@@ -56,7 +56,8 @@ yfinance ──→ current prices ─┤
 | PDFExtractor | Detailed financials from Appendix 4D/4E | Top 25+ ASX |
 | IRHarvester | Earnings PDFs from company IR pages | Top 25 ASX |
 | CompanyIntelHarvester | Quarterly updates, investor presentations | Top 20 ASX |
-| Price Reaction Proxy | Beat/miss from market response | All ASX tickers |
+| ConsensusHarvester | Forward consensus EPS, beat/miss history | All ASX tickers |
+| Price Reaction Proxy | Beat/miss fallback from market response | All ASX tickers |
 | yfinance | Current prices, recommendations, growth | All ASX tickers |
 
 ## Stack

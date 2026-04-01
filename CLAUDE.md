@@ -10,7 +10,7 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 - Storage: Cloudflare R2 (seed cache)
 - Queue: Upstash Redis (job queue)
 - LLM: Claude API (Sonnet for agents + PDF extraction, Haiku for summaries)
-- Data: ASX Markit API + PDFExtractor + yfinance (supplementary)
+- Data: ASX Markit API + PDFExtractor + yfinance (consensus EPS + supplementary)
 - Edge: Cloudflare (always stays regardless of cloud)
 
 ## Pipeline Flow
@@ -31,6 +31,7 @@ prediction_synthesiser → results in Neon
 - asx_scraper/orchestrator.py — runs full scrape pipeline per ticker
 - asx_scraper/price_scraper.py — yfinance price reactions on earnings dates
 - asx_scraper/metrics_computer.py — beat_rate, credibility scores from asx_earnings
+- asx_scraper/consensus_harvester.py — consensus EPS from yfinance earnings_estimate
 - asx_scraper/finnhub_client.py — Finnhub API (disabled — US consensus, kept for reference)
 - seed_harvester/harvester.py — two-layer cache
 - seed_harvester/slow_layer.py — yfinance + Sonnet
@@ -74,7 +75,7 @@ FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 
 ## Current Known Limitations
 - ASX 200 only
-- Beat/miss uses price reaction proxy (no free ASX consensus EPS source found)
+- Beat/miss uses yfinance earnings_estimate consensus (forward EPS + yearAgoEps for latest beat/miss)
 - BHP PDFs timeout from bhp.com CDN — ASX API provides fallback data
 - Simulation duration ~170s
 - No user accounts in V1

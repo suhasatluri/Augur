@@ -23,11 +23,14 @@ class StructuredDataFetcher:
         """Fetch all available data for a ticker. Returns raw values dict.
 
         Tries pre-scraped DB data first (asx_scraper), falls back to live yfinance + stockanalysis.
+        Enriches with consensus data from yfinance earnings_estimate.
         """
         # Try pre-scraped data from asx_scraper tables
         db_data = await self.get_from_db(ticker)
         if db_data:
             logger.info(f"[structured] Using pre-scraped DB data for {ticker}")
+            # Enrich with consensus data
+            db_data = await self._enrich_consensus(ticker, db_data)
             return db_data
 
         data: dict = {"ticker": ticker, "source_yfinance": {}, "source_stockanalysis": {}}
@@ -80,6 +83,9 @@ class StructuredDataFetcher:
 
         # --- Source 2: stockanalysis.com beat/miss ---
         data["source_stockanalysis"] = await self._fetch_beat_miss(ticker)
+
+        # --- Source 3: consensus enrichment ---
+        data = await self._enrich_consensus(ticker, data)
 
         return data
 
@@ -148,6 +154,34 @@ class StructuredDataFetcher:
             logger.warning(f"[structured] stockanalysis scrape failed for {ticker}: {e}")
 
         return result
+
+    async def _enrich_consensus(self, ticker: str, data: dict) -> dict:
+        """Add consensus beat_rate from ConsensusHarvester if available."""
+        try:
+            from asx_scraper.consensus_harvester import ConsensusHarvester
+            harvester = ConsensusHarvester()
+            history = await harvester.get_beat_history(ticker)
+
+            if history.get("data_confidence") in ("HIGH", "MED") and history.get("beat_rate") is not None:
+                # Override stockanalysis beat_rate with consensus-derived rate
+                sa = data.setdefault("source_stockanalysis", {})
+                sa["beat_rate"] = history["beat_rate"]
+                sa["beat_rate_source"] = "yfinance_consensus"
+                data["source_consensus"] = {
+                    "consensus_eps": history.get("consensus_eps"),
+                    "consensus_eps_cents": history.get("consensus_eps_cents"),
+                    "year_ago_eps": history.get("year_ago_eps"),
+                    "analyst_count": history.get("analyst_count"),
+                    "beat_rate": history.get("beat_rate"),
+                    "data_confidence": history.get("data_confidence"),
+                }
+                logger.info(
+                    f"[structured] Consensus enrichment for {ticker}: "
+                    f"beat_rate={history['beat_rate']}, analysts={history.get('analyst_count')}"
+                )
+        except Exception as e:
+            logger.debug(f"[structured] Consensus enrichment failed for {ticker}: {e}")
+        return data
 
     async def get_from_db(self, ticker: str) -> Optional[dict]:
         """Read pre-scraped data from Neon. Falls back to None if unavailable.
@@ -277,20 +311,26 @@ class StructuredDataFetcher:
         breakdown["growth_component"] = {"value": growth_component, "raw": eg, "weight": 0.20}
 
         # 4. Beat rate component (20%)
-        # Banks exhibit sell-the-news effect — price proxy is unreliable
+        # Priority: consensus data > price proxy > neutral fallback
+        # Banks exhibit sell-the-news effect — price proxy is unreliable for them
         _BANK_TICKERS = {"CBA", "WBC", "ANZ", "NAB", "MQG"}
         ticker = data.get("ticker", "").upper()
         beat_rate = sa_data.get("beat_rate")
-        asx_scraper_data = data.get("source_asx_scraper", {})
-        is_price_proxy = asx_scraper_data.get("data_confidence") in (None, "LOW", "MED") or beat_rate is not None
+        beat_rate_source = sa_data.get("beat_rate_source", "price_proxy")
+        has_consensus = beat_rate_source == "yfinance_consensus"
 
-        if ticker in _BANK_TICKERS and is_price_proxy:
+        if has_consensus and beat_rate is not None:
+            # Real consensus-derived beat_rate — use as-is for all tickers
+            beat_component = _clamp(beat_rate)
+            beat_rate_raw = beat_rate
+        elif ticker in _BANK_TICKERS and not has_consensus:
+            # Bank with only price proxy — unreliable, fallback to neutral
             logger.warning(
                 f"[structured] Bank price proxy unreliable for {ticker} "
                 f"(sell-the-news effect) — beat_rate fallback to 0.50"
             )
             beat_component = 0.5
-            beat_rate_raw = f"{beat_rate} (overridden — bank sector)"
+            beat_rate_raw = f"{beat_rate} (overridden — bank sector, no consensus)"
         elif beat_rate is not None:
             beat_component = _clamp(beat_rate)
             beat_rate_raw = beat_rate
