@@ -28,9 +28,13 @@ COMPANY_INTEL_PAGES = {
         "ir_base": "https://www.commbank.com.au",
     },
     "BHP": {
-        "quarterly_url": "https://www.bhp.com/investors/financial-results-operational-reviews",
-        "results_url": "https://www.bhp.com/investors",
+        "quarterly_url": None,  # bhp.com CDN blocks automated downloads
+        "results_url": None,
         "ir_base": "https://www.bhp.com",
+        "fallback_search_queries": {
+            "quarterly": 'site:announcements.asx.com.au BHP "operational review" OR "quarterly"',
+            "presentation": 'site:announcements.asx.com.au BHP "results" OR "presentation" PDF',
+        },
     },
     "CSL": {
         "quarterly_url": None,
@@ -179,11 +183,18 @@ class CompanyIntelHarvester:
 
     async def _find_pdf_via_search(self, ticker: str, doc_type: str) -> Optional[str]:
         """Use Claude web_search to find a quarterly/presentation PDF URL."""
-        queries = {
-            "quarterly": f'{ticker} ASX quarterly update OR "trading update" OR "operational review" PDF 2025 OR 2026',
-            "presentation": f'{ticker} ASX "investor presentation" OR "results presentation" PDF 2025 OR 2026',
-        }
-        query = queries.get(doc_type, queries["quarterly"])
+        # Check for ticker-specific fallback queries (e.g. BHP uses ASX announcements)
+        page_config = COMPANY_INTEL_PAGES.get(ticker.upper(), {})
+        fallback_queries = page_config.get("fallback_search_queries", {})
+
+        if doc_type in fallback_queries:
+            query = fallback_queries[doc_type]
+        else:
+            queries = {
+                "quarterly": f'{ticker} ASX quarterly update OR "trading update" OR "operational review" PDF 2025 OR 2026',
+                "presentation": f'{ticker} ASX "investor presentation" OR "results presentation" PDF 2025 OR 2026',
+            }
+            query = queries.get(doc_type, queries["quarterly"])
 
         try:
             message = await self.client.messages.create(

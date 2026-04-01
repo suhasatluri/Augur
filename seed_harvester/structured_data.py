@@ -277,12 +277,27 @@ class StructuredDataFetcher:
         breakdown["growth_component"] = {"value": growth_component, "raw": eg, "weight": 0.20}
 
         # 4. Beat rate component (20%)
+        # Banks exhibit sell-the-news effect — price proxy is unreliable
+        _BANK_TICKERS = {"CBA", "WBC", "ANZ", "NAB", "MQG"}
+        ticker = data.get("ticker", "").upper()
         beat_rate = sa_data.get("beat_rate")
-        if beat_rate is not None:
+        asx_scraper_data = data.get("source_asx_scraper", {})
+        is_price_proxy = asx_scraper_data.get("data_confidence") in (None, "LOW", "MED") or beat_rate is not None
+
+        if ticker in _BANK_TICKERS and is_price_proxy:
+            logger.warning(
+                f"[structured] Bank price proxy unreliable for {ticker} "
+                f"(sell-the-news effect) — beat_rate fallback to 0.50"
+            )
+            beat_component = 0.5
+            beat_rate_raw = f"{beat_rate} (overridden — bank sector)"
+        elif beat_rate is not None:
             beat_component = _clamp(beat_rate)
+            beat_rate_raw = beat_rate
         else:
             beat_component = 0.5
-        breakdown["beat_rate_component"] = {"value": beat_component, "raw": beat_rate, "weight": 0.20}
+            beat_rate_raw = beat_rate
+        breakdown["beat_rate_component"] = {"value": beat_component, "raw": beat_rate_raw, "weight": 0.20}
 
         # 5. Intel component (10%) — company quarterly outlook
         intel_outlook = intel_data.get("overall_outlook")
