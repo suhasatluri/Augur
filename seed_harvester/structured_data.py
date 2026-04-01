@@ -20,7 +20,16 @@ class StructuredDataFetcher:
     """Fetches structured financial data for ASX tickers."""
 
     async def get_ticker_data(self, ticker: str) -> dict:
-        """Fetch all available data for a ticker. Returns raw values dict."""
+        """Fetch all available data for a ticker. Returns raw values dict.
+
+        Tries pre-scraped DB data first (asx_scraper), falls back to live yfinance + stockanalysis.
+        """
+        # Try pre-scraped data from asx_scraper tables
+        db_data = await self.get_from_db(ticker)
+        if db_data:
+            logger.info(f"[structured] Using pre-scraped DB data for {ticker}")
+            return db_data
+
         data: dict = {"ticker": ticker, "source_yfinance": {}, "source_stockanalysis": {}}
 
         # --- Source 1: yfinance ---
@@ -139,6 +148,73 @@ class StructuredDataFetcher:
             logger.warning(f"[structured] stockanalysis scrape failed for {ticker}: {e}")
 
         return result
+
+    async def get_from_db(self, ticker: str) -> Optional[dict]:
+        """Read pre-scraped data from Neon. Falls back to None if unavailable.
+
+        Returns the same structure as get_ticker_data() but with real beat_rate
+        from asx_metrics instead of stockanalysis.com scraping.
+        """
+        try:
+            from db.schema import get_pool
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                metrics = await conn.fetchrow(
+                    "SELECT * FROM asx_metrics WHERE ticker = $1", ticker.upper()
+                )
+                if not metrics or metrics["data_confidence"] == "LOW":
+                    return None
+
+                company = await conn.fetchrow(
+                    "SELECT * FROM asx_companies WHERE ticker = $1", ticker.upper()
+                )
+
+                # Build the same structure as get_ticker_data so compute_ticker_bias_score works
+                data: dict = {
+                    "ticker": ticker.upper(),
+                    "source_yfinance": {},
+                    "source_stockanalysis": {
+                        "beat_rate": metrics["beat_rate_8q"],
+                        "quarters_beat": None,
+                        "quarters_total": metrics["quarters_available"],
+                        "raw_surprises": [],
+                    },
+                    "source_asx_scraper": {
+                        "beat_rate_8q": metrics["beat_rate_8q"],
+                        "beat_rate_4q": metrics["beat_rate_4q"],
+                        "avg_surprise_pct": metrics["avg_surprise_pct"],
+                        "mgmt_credibility": metrics["mgmt_credibility_score"],
+                        "data_confidence": metrics["data_confidence"],
+                    },
+                }
+
+                if company:
+                    data["source_yfinance"]["longName"] = company["company_name"]
+                    data["source_yfinance"]["sector"] = company["sector"]
+                    data["source_yfinance"]["industry"] = company["industry"]
+
+                # Still need yfinance for price/recommendation data
+                try:
+                    import yfinance as yf
+                    stock = yf.Ticker(f"{ticker.upper()}.AX")
+                    info = stock.info or {}
+                    data["source_yfinance"]["currentPrice"] = info.get("currentPrice")
+                    data["source_yfinance"]["targetMeanPrice"] = info.get("targetMeanPrice")
+                    data["source_yfinance"]["recommendationMean"] = info.get("recommendationMean")
+                    data["source_yfinance"]["earningsGrowth"] = info.get("earningsGrowth")
+                except Exception as e:
+                    logger.debug(f"[structured] yfinance supplement failed for {ticker}: {e}")
+
+                logger.info(
+                    f"[structured] DB data for {ticker}: "
+                    f"beat_rate={metrics['beat_rate_8q']}, "
+                    f"confidence={metrics['data_confidence']}"
+                )
+                return data
+
+        except Exception as e:
+            logger.debug(f"[structured] DB lookup failed for {ticker}: {e}")
+            return None
 
     def compute_ticker_bias_score(self, data: dict) -> tuple[float, dict]:
         """Compute ticker_bias_score from structured data. Returns (score, breakdown)."""
