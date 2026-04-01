@@ -156,28 +156,29 @@ class StructuredDataFetcher:
         return result
 
     async def _enrich_consensus(self, ticker: str, data: dict) -> dict:
-        """Add consensus beat_rate from ConsensusHarvester if available."""
+        """Add blended beat_rate from ConsensusHarvester (yfinance + Perplexity)."""
         try:
             from asx_scraper.consensus_harvester import ConsensusHarvester
             harvester = ConsensusHarvester()
-            history = await harvester.get_beat_history(ticker)
+            blended = await harvester.get_blended_beat_rate(ticker)
 
-            if history.get("data_confidence") in ("HIGH", "MED") and history.get("beat_rate") is not None:
-                # Override stockanalysis beat_rate with consensus-derived rate
+            if blended.get("data_confidence") in ("HIGH", "MED"):
                 sa = data.setdefault("source_stockanalysis", {})
-                sa["beat_rate"] = history["beat_rate"]
-                sa["beat_rate_source"] = "yfinance_consensus"
+                sa["beat_rate"] = blended["blended_beat_rate"]
+                sa["beat_rate_source"] = "yfinance_consensus+perplexity"
                 data["source_consensus"] = {
-                    "consensus_eps": history.get("consensus_eps"),
-                    "consensus_eps_cents": history.get("consensus_eps_cents"),
-                    "year_ago_eps": history.get("year_ago_eps"),
-                    "analyst_count": history.get("analyst_count"),
-                    "beat_rate": history.get("beat_rate"),
-                    "data_confidence": history.get("data_confidence"),
+                    "consensus_eps": blended.get("consensus_eps"),
+                    "analyst_count": blended.get("analyst_count"),
+                    "yfinance_beat_rate": blended.get("yfinance_beat_rate"),
+                    "perplexity_adjustment": blended.get("perplexity_adjustment"),
+                    "blended_beat_rate": blended.get("blended_beat_rate"),
+                    "data_confidence": blended.get("data_confidence"),
                 }
                 logger.info(
                     f"[structured] Consensus enrichment for {ticker}: "
-                    f"beat_rate={history['beat_rate']}, analysts={history.get('analyst_count')}"
+                    f"blended={blended['blended_beat_rate']:.3f} "
+                    f"(yf={blended['yfinance_beat_rate']:.2f}, "
+                    f"pplx={blended['perplexity_adjustment']:+.2f})"
                 )
         except Exception as e:
             logger.debug(f"[structured] Consensus enrichment failed for {ticker}: {e}")
@@ -317,7 +318,7 @@ class StructuredDataFetcher:
         ticker = data.get("ticker", "").upper()
         beat_rate = sa_data.get("beat_rate")
         beat_rate_source = sa_data.get("beat_rate_source", "price_proxy")
-        has_consensus = beat_rate_source == "yfinance_consensus"
+        has_consensus = "consensus" in beat_rate_source
 
         if has_consensus and beat_rate is not None:
             # Real consensus-derived beat_rate — use as-is for all tickers

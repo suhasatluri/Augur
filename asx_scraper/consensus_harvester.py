@@ -204,6 +204,94 @@ class ConsensusHarvester:
         )
         return result
 
+    async def get_perplexity_beat_adjustment(self, ticker: str) -> float:
+        """Use Perplexity real-time news to estimate beat tendency adjustment.
+
+        Scans material_news for beat/miss language and estimate revisions
+        to produce a directional adjustment to blend with yfinance beat_rate.
+
+        Returns adjustment in range [-0.15, +0.15] centered on 0.0.
+        """
+        try:
+            from seed_harvester.perplexity_harvester import PerplexityHarvester
+            harvester = PerplexityHarvester()
+            news = await harvester.get_financial_news(ticker)
+        except Exception as e:
+            logger.debug(f"[consensus] Perplexity adjustment failed for {ticker}: {e}")
+            return 0.0
+
+        if not news:
+            return 0.0
+
+        adj = 0.0
+
+        # Material news signals
+        material = " ".join(news.get("material_news", [])).lower()
+        _BEAT_WORDS = ["beat", "exceeded", "above expectations", "busting", "surpass", "top", "better than expected"]
+        _MISS_WORDS = ["miss", "below expectations", "disappoint", "fell short", "underperform", "weaker than"]
+        if any(w in material for w in _BEAT_WORDS):
+            adj += 0.10
+        if any(w in material for w in _MISS_WORDS):
+            adj -= 0.10
+
+        # Estimate revision direction
+        revisions = (news.get("recent_estimate_revisions") or "").upper()
+        if revisions == "UP":
+            adj += 0.05
+        elif revisions == "DOWN":
+            adj -= 0.05
+
+        # Analyst sentiment
+        sentiment = (news.get("analyst_sentiment") or "").lower()
+        if sentiment == "bullish":
+            adj += 0.05
+        elif sentiment == "bearish":
+            adj -= 0.05
+
+        adj = max(-0.15, min(0.15, adj))
+        logger.info(f"[consensus] Perplexity adjustment for {ticker}: {adj:+.2f}")
+        return adj
+
+    async def get_blended_beat_rate(self, ticker: str) -> dict:
+        """Blend yfinance historical beat_rate with Perplexity real-time signal.
+
+        Returns:
+        {
+            yfinance_beat_rate: float,
+            perplexity_adjustment: float,
+            blended_beat_rate: float,
+            data_confidence: str,
+        }
+        """
+        ticker = ticker.upper()
+        history = await self.get_beat_history(ticker)
+        yf_rate = history.get("beat_rate")
+
+        if yf_rate is None:
+            yf_rate = 0.50
+
+        pplx_adj = await self.get_perplexity_beat_adjustment(ticker)
+
+        # Blend: 60% yfinance history + 40% perplexity adjustment (applied to 0.50 base)
+        pplx_component = 0.50 + pplx_adj
+        blended = yf_rate * 0.60 + pplx_component * 0.40
+        blended = max(0.20, min(0.80, blended))
+
+        result = {
+            "ticker": ticker,
+            "yfinance_beat_rate": yf_rate,
+            "perplexity_adjustment": pplx_adj,
+            "blended_beat_rate": round(blended, 4),
+            "consensus_eps": history.get("consensus_eps"),
+            "analyst_count": history.get("analyst_count", 0),
+            "data_confidence": history.get("data_confidence", "LOW"),
+        }
+        logger.info(
+            f"[consensus] {ticker}: yf={yf_rate:.2f}, pplx_adj={pplx_adj:+.2f}, "
+            f"blended={blended:.3f}"
+        )
+        return result
+
     async def update_metrics(self, ticker: str) -> bool:
         """Update asx_metrics with consensus-derived beat_rate."""
         ticker = ticker.upper()
