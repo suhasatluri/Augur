@@ -97,10 +97,23 @@ class ScraperOrchestrator:
         except Exception as e:
             errors.append(f"earnings: {e}")
 
-        # 3. Price reactions
+        # 3. Price reactions + beat_miss proxy
         try:
             updated = await self.prices.update_earnings_reactions(ticker)
             summary["price_reactions_updated"] = updated
+
+            # Fill beat_miss from price proxy where no consensus data exists
+            if updated > 0:
+                from db.schema import get_pool
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    await conn.execute("""
+                        UPDATE asx_earnings
+                        SET beat_miss = price_implied_result
+                        WHERE ticker = $1
+                          AND beat_miss IS NULL
+                          AND price_implied_result IS NOT NULL
+                    """, ticker)
         except Exception as e:
             errors.append(f"prices: {e}")
 
