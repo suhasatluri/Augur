@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 
+from asx_scraper.asx_api import ASXMarketData
 from asx_scraper.company_scraper import CompanyScraper
 from asx_scraper.announcements_scraper import AnnouncementsScraper
 from asx_scraper.ir_harvester import IRHarvester
@@ -34,6 +35,7 @@ class ScraperOrchestrator:
     """Runs the full scrape pipeline for one or many tickers."""
 
     def __init__(self) -> None:
+        self.asx_api = ASXMarketData()
         self.company = CompanyScraper()
         self.announcements = AnnouncementsScraper()
         self.ir_harvester = IRHarvester()
@@ -56,12 +58,21 @@ class ScraperOrchestrator:
             "errors": errors,
         }
 
-        # 1. Company data
+        # 1a. ASX Markit API — official source for company + income statements
+        try:
+            asx_data = await self.asx_api.scrape_and_store(ticker)
+            if "error" not in asx_data:
+                summary["company_name"] = asx_data.get("company_name")
+                summary["asx_api_earnings"] = asx_data.get("earnings_stored", 0)
+            else:
+                errors.append(f"asx_api: {asx_data['error']}")
+        except Exception as e:
+            errors.append(f"asx_api: {e}")
+
+        # 1b. Company data (yfinance fallback for fields ASX API doesn't have)
         try:
             company = await self.company.scrape(ticker)
-            if "error" in company:
-                errors.append(f"company: {company['error']}")
-            else:
+            if "error" not in company and not summary.get("company_name"):
                 summary["company_name"] = company.get("company_name")
         except Exception as e:
             errors.append(f"company: {e}")
