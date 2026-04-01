@@ -35,6 +35,11 @@ All monetary values in AUD millions. EPS and dividends in Australian cents.
   "eps_diluted_cents": float or null,
   "dividend_final_cents": float or null,
   "dividend_interim_cents": float or null,
+  "consensus": {
+    "eps_consensus_cents": float or null,
+    "revenue_consensus_aud_m": float or null,
+    "source": "string or null (e.g. 'Visible Alpha', 'Bloomberg', 'broker consensus')"
+  },
   "guidance_next_period": "text or null",
   "management_quotes": [
     {
@@ -63,7 +68,15 @@ Rules:
 - Revenue and NPAT must be in AUD MILLIONS (divide by 1000 if stated in billions)
 - data_confidence = HIGH if clear financial summary table, MED if figures scattered in text, LOW if unclear
 - Extract up to 5 most significant management quotes with speaker attribution
-- For period: use format "H1 FY2025" for half-year, "FY2025" for full-year"""
+- For period: use format "H1 FY2025" for half-year, "FY2025" for full-year
+
+CONSENSUS EXTRACTION (important):
+- Many ASX earnings PDFs mention analyst consensus, broker estimates, or market expectations
+- Look for phrases like: "vs consensus", "analyst estimate", "market expectation", "broker forecast", "Visible Alpha consensus", "Bloomberg consensus", "ahead of expectations", "below market forecasts"
+- If the PDF states a consensus EPS or revenue figure, extract it into the consensus object
+- If it says "beat consensus by X%" or "X% above consensus", extract the consensus source
+- If no consensus figures are mentioned anywhere in the PDF, set all consensus fields to null
+- NEVER guess or calculate consensus — only extract if explicitly stated"""
 
 # Search queries ordered by specificity
 _SEARCH_QUERIES = [

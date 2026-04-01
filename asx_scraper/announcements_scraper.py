@@ -316,13 +316,19 @@ class AnnouncementsScraper:
                     except (ValueError, TypeError):
                         pass
 
+                # Extract consensus if present in PDF
+                consensus = extracted.get("consensus") or {}
+                eps_consensus = consensus.get("eps_consensus_cents")
+                revenue_consensus = consensus.get("revenue_consensus_aud_m")
+
                 # Upsert earnings row
                 await conn.execute("""
                     INSERT INTO asx_earnings
                         (ticker, period, reporting_date, period_end_date, result_type,
                          revenue_aud_m, npat_aud_m, eps_basic_cents, eps_diluted_cents,
-                         dividend_cents, announcement_url, data_source, data_confidence)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                         dividend_cents, eps_consensus_cents, revenue_consensus_aud_m,
+                         announcement_url, data_source, data_confidence)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                     ON CONFLICT (ticker, reporting_date) DO UPDATE SET
                         period = COALESCE(EXCLUDED.period, asx_earnings.period),
                         period_end_date = COALESCE(EXCLUDED.period_end_date, asx_earnings.period_end_date),
@@ -332,6 +338,8 @@ class AnnouncementsScraper:
                         eps_basic_cents = COALESCE(EXCLUDED.eps_basic_cents, asx_earnings.eps_basic_cents),
                         eps_diluted_cents = COALESCE(EXCLUDED.eps_diluted_cents, asx_earnings.eps_diluted_cents),
                         dividend_cents = COALESCE(EXCLUDED.dividend_cents, asx_earnings.dividend_cents),
+                        eps_consensus_cents = COALESCE(EXCLUDED.eps_consensus_cents, asx_earnings.eps_consensus_cents),
+                        revenue_consensus_aud_m = COALESCE(EXCLUDED.revenue_consensus_aud_m, asx_earnings.revenue_consensus_aud_m),
                         announcement_url = COALESCE(EXCLUDED.announcement_url, asx_earnings.announcement_url),
                         data_source = EXCLUDED.data_source,
                         data_confidence = EXCLUDED.data_confidence,
@@ -347,6 +355,8 @@ class AnnouncementsScraper:
                     extracted.get("eps_basic_cents"),
                     extracted.get("eps_diluted_cents"),
                     extracted.get("dividend_cents"),
+                    eps_consensus,
+                    revenue_consensus,
                     announcement.get("pdf_url") or announcement.get("url"),
                     "pdf",
                     extracted.get("data_confidence", "MED"),

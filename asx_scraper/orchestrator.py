@@ -8,7 +8,6 @@ import time
 
 from asx_scraper.company_scraper import CompanyScraper
 from asx_scraper.announcements_scraper import AnnouncementsScraper
-from asx_scraper.finnhub_client import FinnhubClient
 from asx_scraper.ir_harvester import IRHarvester
 from asx_scraper.pdf_extractor import PDFExtractor
 from asx_scraper.price_scraper import PriceScraper
@@ -37,7 +36,6 @@ class ScraperOrchestrator:
     def __init__(self) -> None:
         self.company = CompanyScraper()
         self.announcements = AnnouncementsScraper()
-        self.finnhub = FinnhubClient()
         self.ir_harvester = IRHarvester()
         self.pdf_extractor = PDFExtractor()
         self.prices = PriceScraper()
@@ -99,15 +97,12 @@ class ScraperOrchestrator:
         except Exception as e:
             errors.append(f"earnings: {e}")
 
-        # 3. Finnhub consensus data (real analyst estimates where available)
-        try:
-            finnhub_updated = await self.finnhub.update_consensus(ticker)
-            summary["finnhub_matched"] = finnhub_updated
-        except Exception as e:
-            summary["finnhub_matched"] = 0
-            errors.append(f"finnhub: {e}")
+        # 3. Finnhub disabled — US-listed consensus diverges from ASX analyst expectations.
+        #    Kept in codebase for potential future US market coverage.
+        #    See: asx_scraper/finnhub_client.py
+        summary["finnhub_matched"] = 0
 
-        # 4. Price reactions + beat_miss proxy (fallback for tickers without Finnhub)
+        # 4. Price reactions + beat_miss proxy (ASX market response = ground truth)
         try:
             updated = await self.prices.update_earnings_reactions(ticker)
             summary["price_reactions_updated"] = updated
