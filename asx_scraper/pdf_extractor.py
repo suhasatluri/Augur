@@ -103,18 +103,53 @@ def _parse_json_response(raw: str) -> dict:
     return json.loads(text)
 
 
-async def _download_pdf(url: str, timeout: int = 45) -> bytes:
-    """Download a PDF from a URL. Returns bytes."""
-    ctx = ssl.create_default_context()
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    })
+async def _download_pdf(
+    url: str,
+    timeout: int = 56,
+    max_retries: int = 3,
+    backoff_base: float = 2.0,
+) -> bytes:
+    """Download a PDF with exponential backoff retry.
 
-    def do_download():
-        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
-            return resp.read()
+    Strategy:
+    - Attempt 1: full timeout (56s)
+    - Attempt 2: wait 2s, then retry with 1.25x timeout (70s)
+    - Attempt 3: wait 4s, then retry with 1.25x timeout (87s)
+    Raises on final failure.
+    """
+    last_error: Exception | None = None
+    current_timeout = timeout
 
-    return await asyncio.get_event_loop().run_in_executor(None, do_download)
+    for attempt in range(1, max_retries + 1):
+        try:
+            ctx = ssl.create_default_context()
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            })
+
+            def do_download(t=current_timeout):
+                with urllib.request.urlopen(req, context=ctx, timeout=t) as resp:
+                    return resp.read()
+
+            data = await asyncio.get_event_loop().run_in_executor(None, do_download)
+            if attempt > 1:
+                logger.info(f"[pdf] Download succeeded on attempt {attempt} for {url}")
+            return data
+
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries:
+                wait = backoff_base ** (attempt - 1)
+                current_timeout = int(current_timeout * 1.25)
+                logger.info(
+                    f"[pdf] Download attempt {attempt} failed ({e}), "
+                    f"retrying in {wait:.0f}s with {current_timeout}s timeout"
+                )
+                await asyncio.sleep(wait)
+            else:
+                logger.warning(f"[pdf] Download failed after {max_retries} attempts: {url}")
+
+    raise last_error  # type: ignore[misc]
 
 
 async def _truncate_pdf(pdf_bytes: bytes, max_pages: int = 80) -> bytes:

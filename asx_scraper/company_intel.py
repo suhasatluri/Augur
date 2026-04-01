@@ -237,7 +237,7 @@ class CompanyIntelHarvester:
         """Download and extract from a PDF using a specific prompt."""
         try:
             import base64
-            pdf_bytes = await _download_pdf(pdf_url, timeout=45)
+            pdf_bytes = await _download_pdf(pdf_url)
             if len(pdf_bytes) > 25_000_000:
                 return {}
             pdf_bytes = await _truncate_pdf(pdf_bytes, max_pages=60)

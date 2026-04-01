@@ -200,24 +200,15 @@ class AnnouncementsScraper:
             return {}
 
         try:
-            # Download PDF
-            ctx = ssl.create_default_context()
-            req = urllib.request.Request(pdf_url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            })
+            from asx_scraper.pdf_extractor import _download_pdf, _truncate_pdf
 
-            def do_download():
-                with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
-                    return resp.read()
+            pdf_bytes = await _download_pdf(pdf_url)
 
-            pdf_bytes = await asyncio.get_event_loop().run_in_executor(None, do_download)
-
-            if len(pdf_bytes) > 20_000_000:  # 20MB hard limit
+            if len(pdf_bytes) > 20_000_000:
                 logger.warning(f"[announcements] PDF too large for {ticker}: {len(pdf_bytes)} bytes, skipping")
                 return {}
 
-            # Truncate to first 80 pages if needed
-            pdf_bytes = await self._truncate_pdf(pdf_bytes, max_pages=80)
+            pdf_bytes = await _truncate_pdf(pdf_bytes, max_pages=80)
 
             import base64
             pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("ascii")
