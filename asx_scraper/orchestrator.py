@@ -1,0 +1,155 @@
+"""Scraper orchestrator — runs the full pipeline for one or many tickers."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+
+from asx_scraper.company_scraper import CompanyScraper
+from asx_scraper.announcements_scraper import AnnouncementsScraper
+from asx_scraper.price_scraper import PriceScraper
+from asx_scraper.metrics_computer import MetricsComputer
+
+logger = logging.getLogger(__name__)
+
+# ASX 100 tickers (top by market cap)
+ASX100_TICKERS = [
+    "BHP", "CBA", "CSL", "NAB", "WBC", "ANZ", "WES", "MQG", "FMG", "WDS",
+    "TLS", "WOW", "RIO", "ALL", "GMG", "TCL", "COL", "STO", "QBE", "REA",
+    "NCM", "AMC", "SHL", "JHX", "SOL", "ORG", "IAG", "MIN", "S32", "SUN",
+    "BXB", "APA", "RMD", "CPU", "TWE", "ORI", "AZJ", "BSL", "SVW", "GPT",
+    "NST", "MGR", "DXS", "CHC", "SGP", "VCX", "SCG", "ABP", "CWN", "EVN",
+    "ILU", "WHC", "ALD", "LYC", "PLS", "IGO", "SFR", "DEG", "GOR", "RED",
+    "BPT", "AWC", "NHC", "YAL", "HVN", "TAH", "SGM", "IEL", "ASX", "MPL",
+    "NXT", "ALX", "CEN", "BOQ", "BEN", "HUB", "NWS", "SEK", "CAR", "DHG",
+    "WTC", "XRO", "TNE", "ALU", "PME", "APX", "TYR", "LNK", "PPT", "CGF",
+    "QAN", "FLT", "WEB", "JBH", "PMV", "SUL", "COH", "RHC", "A2M", "GQG",
+]
+
+
+class ScraperOrchestrator:
+    """Runs the full scrape pipeline for one or many tickers."""
+
+    def __init__(self) -> None:
+        self.company = CompanyScraper()
+        self.announcements = AnnouncementsScraper()
+        self.prices = PriceScraper()
+        self.metrics = MetricsComputer()
+
+    async def scrape_ticker(self, ticker: str) -> dict:
+        """Full pipeline for one ticker."""
+        ticker = ticker.upper()
+        start = time.monotonic()
+        errors: list[str] = []
+        summary = {
+            "ticker": ticker,
+            "announcements_found": 0,
+            "quarters_extracted": 0,
+            "price_reactions_updated": 0,
+            "beat_rate": None,
+            "data_confidence": None,
+            "errors": errors,
+        }
+
+        # 1. Company data
+        try:
+            company = await self.company.scrape(ticker)
+            if "error" in company:
+                errors.append(f"company: {company['error']}")
+            else:
+                summary["company_name"] = company.get("company_name")
+        except Exception as e:
+            errors.append(f"company: {e}")
+
+        # 2. Announcements + PDF extraction
+        try:
+            results = await self.announcements.scrape(ticker)
+            summary["announcements_found"] = len(results)
+            summary["quarters_extracted"] = sum(1 for r in results if r.get("saved_to_db"))
+            summary["extracted_records"] = results
+        except Exception as e:
+            errors.append(f"announcements: {e}")
+
+        # 3. Price reactions
+        try:
+            updated = await self.prices.update_earnings_reactions(ticker)
+            summary["price_reactions_updated"] = updated
+        except Exception as e:
+            errors.append(f"prices: {e}")
+
+        # 4. Metrics
+        try:
+            metrics = await self.metrics.compute(ticker)
+            summary["beat_rate"] = metrics.get("beat_rate_8q")
+            summary["data_confidence"] = metrics.get("data_confidence")
+            summary["metrics"] = metrics
+        except Exception as e:
+            errors.append(f"metrics: {e}")
+
+        elapsed = time.monotonic() - start
+        summary["duration_s"] = round(elapsed, 1)
+        logger.info(
+            f"[orchestrator] {ticker} done in {elapsed:.1f}s: "
+            f"{summary['quarters_extracted']} quarters, "
+            f"beat_rate={summary['beat_rate']}, confidence={summary['data_confidence']}"
+        )
+        return summary
+
+    async def scrape_batch(self, tickers: list[str], delay: float = 5.0) -> dict:
+        """Scrapes a specific list of tickers with delay between each."""
+        start = time.monotonic()
+        results = []
+
+        for i, ticker in enumerate(tickers):
+            print(f"  [{i+1}/{len(tickers)}] Scraping {ticker}...")
+            summary = await self.scrape_ticker(ticker)
+            results.append(summary)
+            if i < len(tickers) - 1:
+                await asyncio.sleep(delay)
+
+        elapsed = time.monotonic() - start
+        success = [r for r in results if not r["errors"]]
+        failed = [r for r in results if r["errors"]]
+
+        report = {
+            "total": len(tickers),
+            "success": len(success),
+            "failed": len(failed),
+            "duration_s": round(elapsed, 1),
+            "results": results,
+        }
+        return report
+
+    async def scrape_asx100(self) -> dict:
+        """Scrapes all ASX 100 tickers."""
+        print(f"  Scraping {len(ASX100_TICKERS)} ASX 100 tickers...")
+        return await self.scrape_batch(ASX100_TICKERS, delay=5.0)
+
+    async def show_ticker(self, ticker: str) -> dict:
+        """Show all stored data for a ticker from the DB."""
+        ticker = ticker.upper()
+        from db.schema import get_pool
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            company = await conn.fetchrow(
+                "SELECT * FROM asx_companies WHERE ticker = $1", ticker
+            )
+            earnings = await conn.fetch(
+                "SELECT * FROM asx_earnings WHERE ticker = $1 ORDER BY reporting_date DESC", ticker
+            )
+            metrics = await conn.fetchrow(
+                "SELECT * FROM asx_metrics WHERE ticker = $1", ticker
+            )
+            commentary = await conn.fetch(
+                "SELECT * FROM asx_commentary WHERE ticker = $1 ORDER BY reporting_date DESC LIMIT 10",
+                ticker,
+            )
+
+        return {
+            "company": dict(company) if company else None,
+            "earnings": [dict(r) for r in earnings],
+            "metrics": dict(metrics) if metrics else None,
+            "commentary": [dict(r) for r in commentary],
+        }
