@@ -70,10 +70,21 @@ class AnnouncementsScraper:
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
 
     async def get_earnings_announcements(self, ticker: str) -> list[dict]:
-        """Fetches announcement list from ASX API. Returns filtered earnings announcements."""
+        """Fetches earnings announcement PDFs. Tries ASX API, falls back to Claude web_search."""
         ticker = ticker.upper()
-        url = ASX_ANN_URL.format(ticker=ticker)
 
+        # Strategy 1: ASX undocumented API
+        announcements = await self._try_asx_api(ticker)
+        if announcements:
+            return announcements[:8]
+
+        # Strategy 2: Claude web_search to find earnings PDFs
+        announcements = await self._try_web_search(ticker)
+        return announcements[:8]
+
+    async def _try_asx_api(self, ticker: str) -> list[dict]:
+        """Try the ASX undocumented announcements API."""
+        url = ASX_ANN_URL.format(ticker=ticker)
         try:
             ctx = ssl.create_default_context()
             req = urllib.request.Request(url, headers={
@@ -86,30 +97,105 @@ class AnnouncementsScraper:
                     return json.loads(resp.read().decode("utf-8"))
 
             data = await asyncio.get_event_loop().run_in_executor(None, do_fetch)
-            announcements = data if isinstance(data, list) else data.get("data", [])
+            raw = data if isinstance(data, list) else data.get("data", [])
+
+            earnings = []
+            for ann in raw:
+                title = ann.get("header", "") or ann.get("title", "")
+                if any(kw.lower() in title.lower() for kw in EARNINGS_KEYWORDS):
+                    earnings.append({
+                        "ticker": ticker,
+                        "title": title,
+                        "date": ann.get("document_date", ""),
+                        "url": ann.get("url", ""),
+                        "pdf_url": ann.get("document_release_url", ""),
+                    })
+
+            if earnings:
+                logger.info(f"[announcements] ASX API: {ticker} — {len(earnings)} earnings found")
+            return earnings
 
         except Exception as e:
-            logger.warning(f"[announcements] ASX API failed for {ticker}: {e}")
+            logger.debug(f"[announcements] ASX API failed for {ticker}: {e}")
             return []
 
-        # Filter to earnings-related announcements
-        earnings = []
-        for ann in announcements:
-            title = ann.get("header", "") or ann.get("title", "")
-            if any(kw.lower() in title.lower() for kw in EARNINGS_KEYWORDS):
+    async def _try_web_search(self, ticker: str) -> list[dict]:
+        """Use Claude web_search to find earnings PDF URLs for a ticker."""
+        try:
+            message = await self.client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=2048,
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Find the most recent SHORT earnings announcement PDFs for ASX-listed "
+                        f"company {ticker}. I need the Profit Announcement or Results Media Release "
+                        f"PDFs — NOT the full Annual Report (too large).\n\n"
+                        f"Good examples: 'Profit Announcement', 'Results Release', 'ASX Announcement', "
+                        f"'Appendix 4E Preliminary Final Report' (short version, under 50 pages).\n"
+                        f"Bad examples: 'Annual Report' (200+ pages), 'Investor Presentation'.\n\n"
+                        f"Search for: {ticker} ASX profit announcement results release PDF\n\n"
+                        f"Return ONLY a JSON array of objects with keys: title, date (YYYY-MM-DD), "
+                        f"pdf_url. No markdown, no commentary — just the JSON array.\n"
+                        f"Only include URLs that end in .pdf or are direct PDF links.\n"
+                        f"Include up to 4 most recent earnings PDFs."
+                    ),
+                }],
+            )
+
+            # Extract text from response
+            raw = ""
+            for block in message.content:
+                if hasattr(block, "text"):
+                    raw = block.text
+                    break
+
+            if not raw.strip():
+                logger.info(f"[announcements] Web search returned no text for {ticker}")
+                return []
+
+            # Parse JSON from response
+            text = raw.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1]
+                if text.endswith("```"):
+                    text = text[:text.rfind("```")]
+                text = text.strip()
+
+            # Find JSON array
+            start = text.find("[")
+            end = text.rfind("]")
+            if start == -1 or end == -1:
+                logger.warning(f"[announcements] No JSON array in web search response for {ticker}")
+                return []
+
+            items = json.loads(text[start:end + 1])
+            earnings = []
+            for item in items:
+                pdf_url = item.get("pdf_url", "")
+                if not pdf_url:
+                    continue
                 earnings.append({
                     "ticker": ticker,
-                    "title": title,
-                    "date": ann.get("document_date", ""),
-                    "url": ann.get("url", ""),
-                    "pdf_url": ann.get("document_release_url", ""),
+                    "title": item.get("title", ""),
+                    "date": item.get("date", ""),
+                    "url": pdf_url,
+                    "pdf_url": pdf_url,
                 })
 
-        logger.info(f"[announcements] {ticker}: {len(earnings)} earnings announcements found")
-        return earnings[:8]  # Cap at 8 most recent
+            logger.info(f"[announcements] Web search: {ticker} — {len(earnings)} PDF URLs found")
+            return earnings
+
+        except Exception as e:
+            logger.warning(f"[announcements] Web search failed for {ticker}: {e}")
+            return []
 
     async def parse_pdf(self, pdf_url: str, ticker: str) -> dict:
-        """Downloads PDF and uses Claude Sonnet to extract structured data."""
+        """Downloads PDF and uses Claude Sonnet to extract structured data.
+
+        Downloads the PDF, truncates to first 80 pages if needed, then sends to Claude.
+        """
         if not pdf_url:
             return {}
 
@@ -126,14 +212,16 @@ class AnnouncementsScraper:
 
             pdf_bytes = await asyncio.get_event_loop().run_in_executor(None, do_download)
 
-            if len(pdf_bytes) > 10_000_000:  # 10MB limit
-                logger.warning(f"[announcements] PDF too large for {ticker}: {len(pdf_bytes)} bytes")
+            if len(pdf_bytes) > 20_000_000:  # 20MB hard limit
+                logger.warning(f"[announcements] PDF too large for {ticker}: {len(pdf_bytes)} bytes, skipping")
                 return {}
+
+            # Truncate to first 80 pages if needed
+            pdf_bytes = await self._truncate_pdf(pdf_bytes, max_pages=80)
 
             import base64
             pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("ascii")
 
-            # Send to Claude with PDF
             message = await self.client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=4096,
@@ -178,10 +266,42 @@ class AnnouncementsScraper:
             logger.error(f"[announcements] PDF extraction failed for {ticker}: {e}")
             return {}
 
+    async def _truncate_pdf(self, pdf_bytes: bytes, max_pages: int = 80) -> bytes:
+        """Truncate a PDF to the first max_pages pages. Returns original if < max_pages."""
+        try:
+            from pypdf import PdfReader, PdfWriter
+
+            def do_truncate():
+                reader = PdfReader(io.BytesIO(pdf_bytes))
+                if len(reader.pages) <= max_pages:
+                    return pdf_bytes
+                logger.info(f"[announcements] Truncating PDF from {len(reader.pages)} to {max_pages} pages")
+                writer = PdfWriter()
+                for i in range(min(max_pages, len(reader.pages))):
+                    writer.add_page(reader.pages[i])
+                output = io.BytesIO()
+                writer.write(output)
+                return output.getvalue()
+
+            return await asyncio.get_event_loop().run_in_executor(None, do_truncate)
+        except ImportError:
+            logger.debug("[announcements] pypdf not installed — skipping truncation")
+            return pdf_bytes
+        except Exception as e:
+            logger.warning(f"[announcements] PDF truncation failed: {e}")
+            return pdf_bytes
+
     async def _upsert_earnings(self, ticker: str, extracted: dict, announcement: dict) -> bool:
         """Upsert extracted data into asx_earnings and asx_commentary."""
-        reporting_date = extracted.get("reporting_date")
-        if not reporting_date:
+        reporting_date_str = extracted.get("reporting_date")
+        if not reporting_date_str:
+            return False
+
+        from datetime import date as date_type
+        try:
+            reporting_date = date_type.fromisoformat(reporting_date_str)
+        except (ValueError, TypeError):
+            logger.warning(f"[announcements] Invalid date '{reporting_date_str}' for {ticker}")
             return False
 
         try:
@@ -193,7 +313,7 @@ class AnnouncementsScraper:
                         (ticker, period, reporting_date, result_type,
                          revenue_aud_m, npat_aud_m, eps_basic_cents, eps_diluted_cents,
                          dividend_cents, announcement_url, data_source, data_confidence)
-                    VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     ON CONFLICT (ticker, reporting_date) DO UPDATE SET
                         period = COALESCE(EXCLUDED.period, asx_earnings.period),
                         result_type = COALESCE(EXCLUDED.result_type, asx_earnings.result_type),
@@ -229,7 +349,7 @@ class AnnouncementsScraper:
                     await conn.execute("""
                         INSERT INTO asx_commentary
                             (ticker, reporting_date, quote, quote_type, extracted_from)
-                        VALUES ($1, $2::date, $3, $4, $5)
+                        VALUES ($1, $2, $3, $4, $5)
                     """,
                         ticker,
                         reporting_date,
