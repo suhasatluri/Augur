@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS asx_earnings (
     ticker                  TEXT NOT NULL,
     period                  TEXT NOT NULL,       -- e.g. "H1 FY2025"
     reporting_date          DATE NOT NULL,
+    period_end_date         DATE,               -- end of reporting period
     result_type             TEXT,                -- "HALF_YEAR" or "FULL_YEAR"
 
     -- Actuals

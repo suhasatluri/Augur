@@ -49,6 +49,7 @@ def _print_ticker_summary(summary: dict):
     print(f"  {'='*55}")
     print(f"  Announcements found:     {summary['announcements_found']}")
     print(f"  Quarters extracted:      {summary['quarters_extracted']}")
+    print(f"  Finnhub consensus:       {summary.get('finnhub_matched', 0)} matched")
     print(f"  Price reactions updated: {summary['price_reactions_updated']}")
     print(f"  Beat rate (8q):          {summary.get('beat_rate')}")
     print(f"  Data confidence:         {summary.get('data_confidence')}")

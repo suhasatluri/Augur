@@ -49,6 +49,7 @@ AUGUR_API_KEYS — comma-separated API keys
 STORAGE_ENDPOINT — Cloudflare R2 endpoint
 STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
+FINNHUB_API_KEY — Finnhub.io free tier (consensus EPS for dual-listed ASX tickers)
 
 ## Key Decisions Made
 - yfinance replaces Claude web_search for structured financial data (earnings_history empty for ASX — use growth/consensus instead)

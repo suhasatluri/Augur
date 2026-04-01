@@ -307,15 +307,25 @@ class AnnouncementsScraper:
         try:
             pool = await get_pool()
             async with pool.acquire() as conn:
+                # Parse period_end_date if provided
+                period_end = None
+                ped_str = extracted.get("period_end_date")
+                if ped_str:
+                    try:
+                        period_end = date_type.fromisoformat(ped_str)
+                    except (ValueError, TypeError):
+                        pass
+
                 # Upsert earnings row
                 await conn.execute("""
                     INSERT INTO asx_earnings
-                        (ticker, period, reporting_date, result_type,
+                        (ticker, period, reporting_date, period_end_date, result_type,
                          revenue_aud_m, npat_aud_m, eps_basic_cents, eps_diluted_cents,
                          dividend_cents, announcement_url, data_source, data_confidence)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                     ON CONFLICT (ticker, reporting_date) DO UPDATE SET
                         period = COALESCE(EXCLUDED.period, asx_earnings.period),
+                        period_end_date = COALESCE(EXCLUDED.period_end_date, asx_earnings.period_end_date),
                         result_type = COALESCE(EXCLUDED.result_type, asx_earnings.result_type),
                         revenue_aud_m = COALESCE(EXCLUDED.revenue_aud_m, asx_earnings.revenue_aud_m),
                         npat_aud_m = COALESCE(EXCLUDED.npat_aud_m, asx_earnings.npat_aud_m),
@@ -330,6 +340,7 @@ class AnnouncementsScraper:
                     ticker,
                     extracted.get("period"),
                     reporting_date,
+                    period_end,
                     extracted.get("result_type"),
                     extracted.get("revenue_aud_m"),
                     extracted.get("npat_aud_m"),
