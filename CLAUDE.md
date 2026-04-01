@@ -35,7 +35,8 @@ prediction_synthesiser → results in Neon
 - asx_scraper/finnhub_client.py — Finnhub API (disabled — US consensus, kept for reference)
 - seed_harvester/harvester.py — two-layer cache
 - seed_harvester/slow_layer.py — yfinance + Sonnet
-- seed_harvester/fast_layer.py — Haiku sentiment + company intel integration
+- seed_harvester/fast_layer.py — Haiku sentiment + company intel + Perplexity news
+- seed_harvester/perplexity_harvester.py — Perplexity Sonar real-time financial news
 - seed_harvester/structured_data.py — 5-component ticker_bias_score
 - persona_forge/forge.py — 50 agent creation
 - negotiation_runner/runner.py — 3-round debate
@@ -59,6 +60,7 @@ AUGUR_API_KEYS — comma-separated API keys
 STORAGE_ENDPOINT — Cloudflare R2 endpoint
 STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
+PERPLEXITY_API_KEY — Perplexity Sonar (real-time financial news in fast layer, ~$0.005/query)
 FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 
 ## Key Decisions Made

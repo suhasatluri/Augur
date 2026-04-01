@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -23,6 +24,7 @@ Next expected earnings report: {reporting_period}
 The slow layer has already produced these fundamental seeds:
 {slow_layer_summary}
 {company_intel_section}
+{perplexity_section}
 Your job is to identify what has CHANGED or what ADDITIONAL sentiment signals exist that the fundamental analysis above does NOT cover. Do NOT repeat or rephrase the slow layer seeds.
 
 Focus ONLY on:
@@ -94,6 +96,18 @@ async def _get_company_intel_section(ticker: str) -> str:
         return ""
 
 
+async def _get_perplexity_section(ticker: str, reporting_period: str = "") -> str:
+    """Fetch real-time financial news from Perplexity Sonar."""
+    try:
+        from seed_harvester.perplexity_harvester import PerplexityHarvester
+        harvester = PerplexityHarvester()
+        news = await harvester.get_financial_news(ticker, reporting_period)
+        return harvester.to_seed_context(news)
+    except Exception as e:
+        logger.debug(f"[fast_layer] Perplexity failed for {ticker}: {e}")
+        return ""
+
+
 async def harvest_fast(
     client: anthropic.AsyncAnthropic,
     ticker: str,
@@ -114,8 +128,17 @@ async def harvest_fast(
     else:
         slow_summary = "(no slow layer seeds available)"
 
-    # Fetch company intel from Neon (pre-harvested quarterly data)
-    company_intel_section = await _get_company_intel_section(ticker)
+    # Fetch company intel and Perplexity news in parallel
+    company_intel_coro = _get_company_intel_section(ticker)
+    perplexity_coro = _get_perplexity_section(ticker, reporting_period)
+
+    company_intel_section, perplexity_section = await asyncio.gather(
+        company_intel_coro, perplexity_coro, return_exceptions=True,
+    )
+    if isinstance(company_intel_section, Exception):
+        company_intel_section = ""
+    if isinstance(perplexity_section, Exception):
+        perplexity_section = ""
 
     current_date = datetime.utcnow().strftime("%Y-%m-%d")
     prompt = FAST_LAYER_PROMPT.format(
@@ -124,6 +147,7 @@ async def harvest_fast(
         reporting_period=reporting_period,
         slow_layer_summary=slow_summary,
         company_intel_section=company_intel_section,
+        perplexity_section=perplexity_section,
     )
 
     logger.info(f"[fast_layer] Harvesting {ticker} via Haiku...")

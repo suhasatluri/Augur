@@ -57,6 +57,7 @@ yfinance ──→ current prices ─┤
 | IRHarvester | Earnings PDFs from company IR pages | Top 25 ASX |
 | CompanyIntelHarvester | Quarterly updates, investor presentations | Top 20 ASX |
 | ConsensusHarvester | Forward consensus EPS, beat/miss history | All ASX tickers |
+| Perplexity Sonar | Real-time financial news, analyst sentiment | All ASX tickers |
 | Price Reaction Proxy | Beat/miss fallback from market response | All ASX tickers |
 | yfinance | Current prices, recommendations, growth | All ASX tickers |
 
