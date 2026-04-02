@@ -1,0 +1,43 @@
+name: DB Retention Cleanup
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:       # Manual trigger
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install asyncpg python-dotenv
+
+      - name: Run retention cleanup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python3 -c "
+          import asyncio, os, sys, logging
+          logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
+          sys.path.insert(0, os.getcwd())
+          from db.schema import get_pool
+          from db.retention import run_all
+
+          async def main():
+              pool = await get_pool()
+              async with pool.acquire() as conn:
+                  result = await run_all(conn)
+                  print(f'Retention complete: {result}')
+              await pool.close()
+
+          asyncio.run(main())
+          "

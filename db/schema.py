@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS simulations (
 
 CREATE INDEX IF NOT EXISTS idx_simulations_ticker ON simulations(ticker);
 CREATE INDEX IF NOT EXISTS idx_simulations_status ON simulations(status);
+CREATE INDEX IF NOT EXISTS idx_simulations_created_at ON simulations(created_at DESC);
 
 -- ============================================================
 -- agents: one row per agent persona in a simulation
@@ -120,6 +121,7 @@ CREATE TABLE IF NOT EXISTS asx_earnings (
 
 CREATE INDEX IF NOT EXISTS idx_asx_earnings_ticker ON asx_earnings(ticker);
 CREATE INDEX IF NOT EXISTS idx_asx_earnings_date ON asx_earnings(reporting_date);
+CREATE INDEX IF NOT EXISTS idx_asx_earnings_ticker_date ON asx_earnings(ticker, reporting_date DESC);
 
 -- ============================================================
 -- asx_commentary: management quotes per result
@@ -180,6 +182,9 @@ CREATE TABLE IF NOT EXISTS asx_company_intel (
     next_refresh_at     TIMESTAMPTZ,
     data_confidence     TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_asx_metrics_ticker ON asx_metrics(ticker);
+CREATE INDEX IF NOT EXISTS idx_company_intel_ticker ON asx_company_intel(ticker);
 """
 
 _pool = None

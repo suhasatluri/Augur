@@ -5,7 +5,7 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 
 ## Architecture
 - Backend: Python FastAPI on Railway
-- Database: Neon PostgreSQL (separate from Railway)
+- Database: Neon PostgreSQL (8 indexes, CASCADE deletes, hourly retention cleanup)
 - Frontend: Next.js 14 on Vercel
 - Storage: Cloudflare R2 (seed cache)
 - Queue: Upstash Redis (job queue)
@@ -41,7 +41,8 @@ prediction_synthesiser → results in Neon
 - persona_forge/forge.py — 50 agent creation
 - negotiation_runner/runner.py — 3-round debate
 - prediction_synthesiser/synthesiser.py — final report
-- db/schema.py — Neon PostgreSQL schema (11 tables)
+- db/schema.py — Neon PostgreSQL schema (11 tables, 8 indexes, CASCADE deletes)
+- db/retention.py — retention policy (7d failed, 24h batch, reasoning compression)
 - frontend/src/app/ — Next.js App Router pages
 
 ## Critical Rules
@@ -110,6 +111,7 @@ python3 tests/batch_test.py
 
 ## GitHub Actions
 CI runs on every push/PR to main. Weekly regression on Sunday 2am AEST.
+Hourly DB retention cleanup via db_cleanup.yml (deletes failed sims >7d, batch sims >24h, compresses reasoning).
 GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - ANTHROPIC_API_KEY
 - DATABASE_URL
