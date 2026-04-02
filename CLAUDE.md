@@ -43,6 +43,8 @@ prediction_synthesiser → results in Neon
 - prediction_synthesiser/synthesiser.py — final report
 - db/schema.py — Neon PostgreSQL schema (11 tables, 8 indexes, CASCADE deletes)
 - db/retention.py — retention policy (7d failed, 24h batch, reasoning compression)
+- conftest.py — pytest root path setup
+- tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
 - frontend/src/app/ — Next.js App Router pages
 
 ## Critical Rules
@@ -80,7 +82,7 @@ FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 - ASX 200 only
 - Beat/miss uses yfinance earnings_estimate consensus (forward EPS + yearAgoEps for latest beat/miss)
 - BHP PDFs timeout from bhp.com CDN — ASX API provides fallback data
-- Simulation duration ~170s (20-ticker batch validated: 18/20 pass, avg 174s)
+- Simulation duration ~170s (20-ticker batch validated: 20/20 pass, avg 174s)
 - ALU yfinance data unavailable (404) — falls back to neutral bias, still completes
 - No user accounts in V1
 - Company intel limited to top 20 tickers with known IR page URLs
@@ -104,6 +106,9 @@ python3 tests/quick_validate.py
 
 # Seed harvest test
 python3 seed_harvester/test_harvester.py BHP --force
+
+# Batch test — subset (use before full batch)
+python3 tests/batch_test.py --tickers XRO CSL BHP
 
 # Full 20-ticker batch (ask before running)
 python3 tests/batch_test.py
