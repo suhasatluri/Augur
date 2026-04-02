@@ -79,7 +79,8 @@ FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 - ASX 200 only
 - Beat/miss uses yfinance earnings_estimate consensus (forward EPS + yearAgoEps for latest beat/miss)
 - BHP PDFs timeout from bhp.com CDN — ASX API provides fallback data
-- Simulation duration ~170s
+- Simulation duration ~170s (20-ticker batch validated: 18/20 pass, avg 174s)
+- ALU yfinance data unavailable (404) — falls back to neutral bias, still completes
 - No user accounts in V1
 - Company intel limited to top 20 tickers with known IR page URLs
 

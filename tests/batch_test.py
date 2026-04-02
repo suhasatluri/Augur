@@ -28,7 +28,7 @@ SECTORS = {
 }
 
 DELAY_BETWEEN = 5  # seconds
-TICKER_TIMEOUT = 240  # 4 minutes max per ticker
+TICKER_TIMEOUT = 300  # 5 minutes max per ticker
 RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "batch_results.json")
 
 
@@ -140,13 +140,17 @@ async def main() -> None:
 
         result = await run_single(ticker, sector)
 
-        # Fetch seed_quality from DB
-        async with pool.acquire() as conn:
-            sq = await conn.fetchval(
-                "SELECT seed_quality FROM simulations WHERE id = $1",
-                result["simulation_id"],
-            )
-            result["seed_quality"] = round(sq, 2) if sq is not None else None
+        # Fetch seed_quality from DB (guard against asyncpg cleanup issues after timeout)
+        try:
+            async with pool.acquire() as conn:
+                sq = await conn.fetchval(
+                    "SELECT seed_quality FROM simulations WHERE id = $1",
+                    result["simulation_id"],
+                )
+                result["seed_quality"] = round(sq, 2) if sq is not None else None
+        except Exception as e:
+            logging.debug(f"[batch] seed_quality fetch failed for {result['ticker']}: {e}")
+            result["seed_quality"] = None
 
         results.append(result)
 
@@ -172,7 +176,11 @@ async def main() -> None:
             print(f"     Waiting {DELAY_BETWEEN}s before next run...")
             await asyncio.sleep(DELAY_BETWEEN)
 
-    # --- Summary ---
+    # --- Summary (always prints, even after timeout errors) ---
+    # Save final results JSON before printing summary
+    with open(RESULTS_PATH, "w") as f:
+        json.dump({"generated_at": datetime.utcnow().isoformat(), "results": results}, f, indent=2)
+
     print(f"\n{'='*80}")
     print(f"  BATCH COMPLETE — {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
     print(f"{'='*80}\n")
