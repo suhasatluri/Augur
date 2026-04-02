@@ -142,6 +142,7 @@ class AnnouncementsScraper:
                         f"Include up to 4 most recent earnings PDFs."
                     ),
                 }],
+                timeout=120.0,
             )
 
             # Extract text from response
@@ -233,6 +234,7 @@ class AnnouncementsScraper:
                         },
                     ],
                 }],
+                timeout=120.0,
             )
 
             raw = message.content[0].text.strip()

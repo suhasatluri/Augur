@@ -29,7 +29,10 @@ class PriceScraper:
                 hist = stock.history(period=f"{days}d")
                 return hist
 
-            hist = await asyncio.get_event_loop().run_in_executor(None, do_fetch)
+            hist = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, do_fetch),
+                timeout=30.0,
+            )
 
             if hist is None or hist.empty:
                 logger.warning(f"[price] No history for {ticker}")
@@ -74,7 +77,10 @@ class PriceScraper:
                 stock = yf.Ticker(f"{ticker.upper()}.AX")
                 return stock.history(start=start.isoformat(), end=end.isoformat())
 
-            hist = await asyncio.get_event_loop().run_in_executor(None, do_fetch)
+            hist = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, do_fetch),
+                timeout=30.0,
+            )
 
             if hist is None or len(hist) < 2:
                 return {"error": "Insufficient price data around reporting date"}

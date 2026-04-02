@@ -27,12 +27,13 @@ SECTORS = {
     "Technology":       ["WTC", "XRO", "TYR", "ALU"],
 }
 
-DELAY_BETWEEN = 30  # seconds
+DELAY_BETWEEN = 5  # seconds
+TICKER_TIMEOUT = 240  # 4 minutes max per ticker
 RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "batch_results.json")
 
 
 async def run_single(ticker: str, sector: str) -> dict:
-    """Run full pipeline for one ticker. Returns result dict."""
+    """Run full pipeline for one ticker with a hard timeout. Returns result dict."""
     simulation_id = f"batch-{ticker.lower()}-{uuid.uuid4().hex[:6]}"
     pool = await get_pool()
 
@@ -45,7 +46,10 @@ async def run_single(ticker: str, sector: str) -> dict:
 
     start = time.monotonic()
     try:
-        report = await run_full_pipeline(simulation_id, ticker)
+        report = await asyncio.wait_for(
+            run_full_pipeline(simulation_id, ticker),
+            timeout=TICKER_TIMEOUT,
+        )
         duration = time.monotonic() - start
 
         return {
@@ -63,6 +67,25 @@ async def run_single(ticker: str, sector: str) -> dict:
             "seed_quality": None,  # filled below
             "duration_s": round(duration, 1),
             "error": None,
+        }
+    except asyncio.TimeoutError:
+        duration = time.monotonic() - start
+        logging.error(f"[batch] {ticker} TIMED OUT after {TICKER_TIMEOUT}s")
+        return {
+            "ticker": ticker,
+            "sector": sector,
+            "simulation_id": simulation_id,
+            "status": "failed",
+            "verdict": None,
+            "p_beat": None,
+            "p_miss": None,
+            "p_inline": None,
+            "mean_probability": None,
+            "convergence_score": None,
+            "high_uncertainty": None,
+            "seed_quality": None,
+            "duration_s": round(duration, 1),
+            "error": f"Timed out after {TICKER_TIMEOUT}s",
         }
     except Exception as e:
         duration = time.monotonic() - start
@@ -89,7 +112,18 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     await ensure_schema()
 
-    all_tickers = [(ticker, sector) for sector, tickers in SECTORS.items() for ticker, sector in zip(tickers, [sector] * len(tickers))]
+    # Support --tickers flag for subset runs
+    custom_tickers: list[str] | None = None
+    if "--tickers" in sys.argv:
+        idx = sys.argv.index("--tickers")
+        custom_tickers = [t.upper() for t in sys.argv[idx + 1:]]
+
+    if custom_tickers:
+        # Map custom tickers to their sectors
+        sector_lookup = {t: s for s, tickers in SECTORS.items() for t in tickers}
+        all_tickers = [(t, sector_lookup.get(t, "Unknown")) for t in custom_tickers]
+    else:
+        all_tickers = [(ticker, sector) for sector, tickers in SECTORS.items() for ticker, sector in zip(tickers, [sector] * len(tickers))]
     total = len(all_tickers)
 
     print(f"\n{'='*80}")

@@ -176,6 +176,7 @@ async def harvest_slow(
         model="claude-sonnet-4-20250514",
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
+        timeout=120.0,
     )
 
     raw = message.content[0].text.strip()

@@ -184,5 +184,6 @@ class PredictionSynthesiser:
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
+            timeout=60.0,
         )
         return message.content[0].text.strip()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -15,6 +16,8 @@ from prediction_synthesiser.models import PredictionReport
 
 logger = logging.getLogger(__name__)
 
+PIPELINE_TIMEOUT = 300  # 5 minutes max per simulation
+
 
 async def run_full_pipeline(
     simulation_id: str,
@@ -26,6 +29,17 @@ async def run_full_pipeline(
     Updates simulation status in Neon at each stage.
     Raises on failure (caller handles status update to 'failed').
     """
+    return await asyncio.wait_for(
+        _run_pipeline_inner(simulation_id, ticker, reporting_date),
+        timeout=PIPELINE_TIMEOUT,
+    )
+
+
+async def _run_pipeline_inner(
+    simulation_id: str,
+    ticker: str,
+    reporting_date: str = "",
+) -> PredictionReport:
     start = time.monotonic()
     pool = await get_pool()
 

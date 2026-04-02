@@ -224,6 +224,7 @@ class PDFExtractor:
                         },
                     ],
                 }],
+                timeout=120.0,
             )
 
             raw = message.content[0].text.strip()
@@ -292,6 +293,7 @@ class PDFExtractor:
                         f"Maximum 4 results."
                     ),
                 }],
+                timeout=120.0,
             )
 
             raw = ""

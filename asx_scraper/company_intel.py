@@ -210,6 +210,7 @@ class CompanyIntelHarvester:
                         f"No markdown, no commentary."
                     ),
                 }],
+                timeout=120.0,
             )
 
             raw = ""
@@ -267,6 +268,7 @@ class CompanyIntelHarvester:
                         {"type": "text", "text": f"Ticker: {ticker}\n\n{prompt}"},
                     ],
                 }],
+                timeout=120.0,
             )
 
             raw = message.content[0].text.strip()

@@ -135,6 +135,7 @@ class IRHarvester:
             message = await self.client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=2048,
+                timeout=60.0,
                 messages=[{
                     "role": "user",
                     "content": (

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import date
@@ -36,10 +37,9 @@ class StructuredDataFetcher:
         data: dict = {"ticker": ticker, "source_yfinance": {}, "source_stockanalysis": {}}
 
         # --- Source 1: yfinance ---
-        try:
+        def _fetch_yfinance():
             stock = yf.Ticker(f"{ticker}.AX")
             info = stock.info or {}
-
             yf_fields = {
                 "longName": info.get("longName"),
                 "sector": info.get("sector"),
@@ -57,8 +57,6 @@ class StructuredDataFetcher:
                 "dividendYield": info.get("dividendYield"),
                 "marketCap": info.get("marketCap"),
             }
-            data["source_yfinance"] = yf_fields
-
             # Calendar — next earnings date
             try:
                 cal = stock.calendar
@@ -66,18 +64,27 @@ class StructuredDataFetcher:
                     if isinstance(cal, dict):
                         ed = cal.get("Earnings Date")
                         if ed and isinstance(ed, list) and len(ed) > 0:
-                            data["source_yfinance"]["nextEarningsDate"] = str(ed[0])
+                            yf_fields["nextEarningsDate"] = str(ed[0])
                         elif ed:
-                            data["source_yfinance"]["nextEarningsDate"] = str(ed)
+                            yf_fields["nextEarningsDate"] = str(ed)
                     elif hasattr(cal, "to_dict"):
                         cal_dict = cal.to_dict()
                         ed = cal_dict.get("Earnings Date")
                         if ed:
-                            data["source_yfinance"]["nextEarningsDate"] = str(ed)
-            except Exception as e:
-                logger.debug(f"[structured] Calendar fetch failed for {ticker}: {e}")
+                            yf_fields["nextEarningsDate"] = str(ed)
+            except Exception:
+                pass
+            return yf_fields, info.get("longName", "N/A")
 
-            logger.info(f"[structured] yfinance OK for {ticker}: {info.get('longName', 'N/A')}")
+        try:
+            yf_fields, long_name = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _fetch_yfinance),
+                timeout=30.0,
+            )
+            data["source_yfinance"] = yf_fields
+            logger.info(f"[structured] yfinance OK for {ticker}: {long_name}")
+        except asyncio.TimeoutError:
+            logger.error(f"[structured] yfinance timed out for {ticker} (30s)")
         except Exception as e:
             logger.error(f"[structured] yfinance failed for {ticker}: {e}")
 
@@ -248,12 +255,24 @@ class StructuredDataFetcher:
                 # Still need yfinance for price/recommendation data
                 try:
                     import yfinance as yf
-                    stock = yf.Ticker(f"{ticker.upper()}.AX")
-                    info = stock.info or {}
-                    data["source_yfinance"]["currentPrice"] = info.get("currentPrice")
-                    data["source_yfinance"]["targetMeanPrice"] = info.get("targetMeanPrice")
-                    data["source_yfinance"]["recommendationMean"] = info.get("recommendationMean")
-                    data["source_yfinance"]["earningsGrowth"] = info.get("earningsGrowth")
+
+                    def _fetch_yf_supplement():
+                        stock = yf.Ticker(f"{ticker.upper()}.AX")
+                        info = stock.info or {}
+                        return {
+                            "currentPrice": info.get("currentPrice"),
+                            "targetMeanPrice": info.get("targetMeanPrice"),
+                            "recommendationMean": info.get("recommendationMean"),
+                            "earningsGrowth": info.get("earningsGrowth"),
+                        }
+
+                    supp = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(None, _fetch_yf_supplement),
+                        timeout=30.0,
+                    )
+                    data["source_yfinance"].update(supp)
+                except asyncio.TimeoutError:
+                    logger.debug(f"[structured] yfinance supplement timed out for {ticker}")
                 except Exception as e:
                     logger.debug(f"[structured] yfinance supplement failed for {ticker}: {e}")
 

@@ -271,6 +271,7 @@ class NegotiationRunner:
             model="claude-haiku-4-5-20251001",
             max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
+            timeout=60.0,
         )
         return message.content[0].text.strip()
 
@@ -307,6 +308,7 @@ class NegotiationRunner:
             model="claude-sonnet-4-20250514",
             max_tokens=6144,
             messages=[{"role": "user", "content": prompt}],
+            timeout=120.0,
         )
 
         raw = message.content[0].text

@@ -103,7 +103,10 @@ class ConsensusHarvester:
 
             return result
 
-        return await asyncio.get_event_loop().run_in_executor(None, do_fetch)
+        return await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(None, do_fetch),
+            timeout=30.0,
+        )
 
     async def get_beat_history(self, ticker: str) -> dict:
         """Compute beat/miss history using YoY EPS growth vs consensus expectations.
