@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS simulations (
                     CHECK (status IN ('pending','forging','negotiating','complete','failed')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at    TIMESTAMPTZ,
-    seed_quality    FLOAT CHECK (seed_quality >= 0 AND seed_quality <= 1)
+    seed_quality    FLOAT CHECK (seed_quality >= 0 AND seed_quality <= 1),
+    seed_data       JSONB
 );
 
 CREATE INDEX IF NOT EXISTS idx_simulations_ticker ON simulations(ticker);
@@ -185,6 +186,17 @@ CREATE TABLE IF NOT EXISTS asx_company_intel (
 
 CREATE INDEX IF NOT EXISTS idx_asx_metrics_ticker ON asx_metrics(ticker);
 CREATE INDEX IF NOT EXISTS idx_company_intel_ticker ON asx_company_intel(ticker);
+
+-- Migration: add seed_data column to existing simulations table
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'simulations' AND column_name = 'seed_data'
+    ) THEN
+        ALTER TABLE simulations ADD COLUMN seed_data JSONB;
+    END IF;
+END $$;
 """
 
 _pool = None
