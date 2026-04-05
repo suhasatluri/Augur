@@ -11,15 +11,15 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 - Queue: Upstash Redis (job queue)
 - Monitoring: Sentry (sentry-sdk[fastapi] backend + @sentry/nextjs frontend)
 - LLM: Claude API (Sonnet for agents + PDF extraction, Haiku for summaries)
-- Data: ASX Markit API + PDFExtractor + yfinance (consensus EPS + supplementary)
+- Data: ASX Markit API + PDFExtractor + yfinance + ASIC short interest + Market Index (curl_cffi)
 - Edge: Cloudflare (always stays regardless of cloud)
 
 ## Pipeline Flow
 POST /simulate → augur_api.py → pipeline.py →
-seed_harvester (6hr cache → yfinance + Perplexity + ASX PDFs + company IR) →
+seed_harvester (6hr cache → yfinance + Perplexity + ASX PDFs + ASIC + Market Index) →
 persona_forge (50 agents parallel, bias-anchored) →
-negotiation_runner (3 rounds) →
-prediction_synthesiser → results in Neon
+negotiation_runner (3 rounds + moderator between rounds) →
+prediction_synthesiser → verdict + swing factors → Neon
 
 ## Key Files
 - augur_api.py — FastAPI endpoints, job queue
@@ -33,16 +33,19 @@ prediction_synthesiser → results in Neon
 - asx_scraper/price_scraper.py — yfinance price reactions on earnings dates
 - asx_scraper/metrics_computer.py — beat_rate, credibility scores from asx_earnings
 - asx_scraper/finnhub_client.py — Finnhub API (disabled — US consensus, kept for reference)
+- asx_scraper/sources/asic_short_interest.py — ASIC daily short position data (669 tickers, free)
+- asx_scraper/sources/marketindex.py — Market Index scraper via curl_cffi (director trades + financials)
+- asx_scraper/sources/director_trades.py — Appendix 3Y director trade extractor via ASX CDN
 - seed_harvester/harvester.py — two-layer cache
 - seed_harvester/slow_layer.py — yfinance + Sonnet
 - seed_harvester/fast_layer.py — Haiku sentiment + company intel + Perplexity news
 - seed_harvester/perplexity_harvester.py — Perplexity Sonar real-time financial news
-- seed_harvester/structured_data.py — 5-component ticker_bias_score
+- seed_harvester/structured_data.py — 6-component ticker_bias_score (analyst, upside, growth, beat_rate, short_interest, director)
 - persona_forge/forge.py — 50 agent creation (5 archetypes forged in parallel via asyncio.gather)
 - negotiation_runner/runner.py — 3-round debate
 - prediction_synthesiser/synthesiser.py — final report
 - negotiation_runner/moderator.py — structural moderator between debate rounds (Haiku)
-- db/schema.py — Neon PostgreSQL schema (11 tables, 8 indexes, CASCADE deletes, seed_data JSONB on simulations)
+- db/schema.py — Neon PostgreSQL schema (13 tables, 10+ indexes, CASCADE deletes, seed_data JSONB, market signal columns)
 - db/retention.py — retention policy (7d failed, 24h batch, reasoning compression)
 - conftest.py — pytest root path setup
 - tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
@@ -83,7 +86,7 @@ NEXT_PUBLIC_API_URL — Backend API URL
 - ASX Markit Digital API (asx.api.markitdigital.com) is the primary data source — free, no API key, official ASX data
 - Finnhub disabled for ASX — US-listed consensus diverges from ASX analyst expectations (different market, currency, analyst pool)
 - Price reaction proxy for beat/miss — measures actual ASX market response (>+3% BEAT, <-3% MISS)
-- ticker_bias_score uses 5 components: recommendation (28%), upside (22%), growth (20%), beat rate (20%), company intel (10%)
+- ticker_bias_score uses 6 components: analyst (25%), upside (20%), growth (15%), beat_rate (15%), short_interest (15%), director_signal (10%)
 - yfinance is supplementary for current prices/recommendations — not primary data source
 - 3 rounds not 5 (diminishing returns after round 3)
 - Neon not Supabase (India outage incident)
@@ -157,8 +160,8 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 2. ~~Moderator agent~~ — DONE (negotiation_runner/moderator.py, Haiku, ~$0.02-0.04/sim)
 3. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
 4. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
-5. Outcome tracking (outcomes table exists, needs ingestion)
+5. ~~ASX 100 bootstrap~~ — DONE (ASIC 89/100, Market Index 100/100, director signals for all)
+6. Outcome tracking (outcomes table exists, needs ingestion)
 7. User accounts + simulation history
-8. Bootstrap asx_scraper across full ASX 100
-9. Schedule weekly asx_scraper refresh via GitHub Actions cron
-10. Email alerts for upcoming earnings
+8. Schedule weekly asx_scraper refresh via GitHub Actions cron
+9. Email alerts for upcoming earnings

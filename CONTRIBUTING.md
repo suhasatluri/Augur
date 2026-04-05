@@ -35,13 +35,11 @@ augur/
 │   ├── slow_layer.py               # yfinance + Sonnet analysis
 │   ├── fast_layer.py               # Haiku sentiment + company intel + Perplexity
 │   ├── perplexity_harvester.py     # Real-time financial news via Sonar
-│   ├── structured_data.py          # 5-component ticker_bias_score
+│   ├── structured_data.py          # 6-component ticker_bias_score
 │   ├── cache.py                    # Cache logic
 │   └── quality.py                  # Seed quality scoring
 ├── persona_forge/
 │   └── forge.py                    # 50 agent creation (5 archetypes x 10, parallel)
-├── negotiation_runner/
-│   └── runner.py                   # 3-round structured debate engine
 ├── prediction_synthesiser/
 │   └── synthesiser.py              # Final verdict, swing factors, report
 ├── asx_scraper/
@@ -152,8 +150,8 @@ These are the highest-value areas, roughly in order of impact:
 ### 1. Data pipeline (`asx_scraper/`)
 Beat/miss data accuracy is the single biggest lever for simulation quality. Historical beat rates from official ASX Appendix 4D/4E PDFs feed directly into the `ticker_bias_score`. Improving PDF extraction reliability and expanding coverage beyond the current top 20 tickers would meaningfully improve predictions.
 
-### 2. Moderator agent
-`moderator_agent.py` doesn't exist yet. The concept: a meta-agent that reads all 50 positions each round, identifies the weakest argument, and injects a challenge brief into the next round. This is Phase 4 on the roadmap — estimated +$0.10–0.15 per simulation in Claude API costs.
+### 2. Outcome tracking
+The `outcomes` table exists but ingestion is not yet built. Comparing Augur predictions against actual earnings results would enable accuracy measurement and model calibration.
 
 ### 3. New agent archetypes
 Currently 5 archetypes: Bull, Bear, Quant, Risk, Retail (10 agents each). Sector specialists — Mining Analyst, Tech Analyst, REIT Analyst — could improve verdict accuracy for tickers in those sectors. See `persona_forge/forge.py`.
