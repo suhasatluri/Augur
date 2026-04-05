@@ -58,8 +58,8 @@ Return ONLY a JSON array of objects with keys: seed_type, content, confidence, s
 No markdown, no commentary — just the JSON array."""
 
 
-def _build_structured_data_block(yf_data: dict) -> str:
-    """Format yfinance data as a readable block for the prompt."""
+def _build_structured_data_block(yf_data: dict, extra_data: Optional[dict] = None) -> str:
+    """Format yfinance + market signals data as a readable block for the prompt."""
     lines = []
 
     price = yf_data.get("currentPrice")
@@ -115,6 +115,32 @@ def _build_structured_data_block(yf_data: dict) -> str:
     if ned:
         lines.append(f"Next Earnings Date: {ned}")
 
+    # Market signals from ASIC + director trades
+    if extra_data:
+        short = extra_data.get("source_asic_short", {})
+        director = extra_data.get("source_director", {})
+        spread_pct = yf_data.get("analyst_spread_pct")
+        consensus_q = yf_data.get("analyst_consensus_quality")
+
+        if short:
+            pct = short.get("pct_shorted", 0)
+            sig = short.get("signal", "UNKNOWN")
+            lines.append(f"Short Interest: {pct:.2f}% [{sig}] (ASIC data)")
+
+        if director:
+            net = director.get("net_buy_value", 0)
+            sig = director.get("signal", "NEUTRAL")
+            buys = director.get("buy_count", 0)
+            sells = director.get("sell_count", 0)
+            net_str = f"+${net:,.0f}" if net > 0 else f"-${abs(net):,.0f}"
+            lines.append(f"Director Trades: {buys} buys, {sells} sells, net {net_str} [{sig}]")
+
+        if spread_pct is not None and spread_pct > 0:
+            hi = yf_data.get("targetHighPrice")
+            lo = yf_data.get("targetLowPrice")
+            range_str = f"${lo:.2f}–${hi:.2f} " if lo and hi else ""
+            lines.append(f"Analyst Target Range: {range_str}(spread {spread_pct:.0f}%) [{consensus_q or 'N/A'}]")
+
     return "\n".join(lines) if lines else "(no structured data available)"
 
 
@@ -155,7 +181,7 @@ async def harvest_slow(
 
     # --- Step 2: Build prompt with structured data ---
     current_date = datetime.utcnow().strftime("%Y-%m-%d")
-    structured_block = _build_structured_data_block(yf_data)
+    structured_block = _build_structured_data_block(yf_data, extra_data=structured_data)
 
     prompt = SLOW_LAYER_PROMPT.format(
         ticker=ticker,

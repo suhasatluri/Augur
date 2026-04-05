@@ -19,6 +19,61 @@ from prediction_synthesiser.models import PredictionReport
 logger = logging.getLogger(__name__)
 
 PIPELINE_TIMEOUT = 300  # 5 minutes max per simulation
+
+
+def _build_market_signal_seeds(structured_data: dict) -> list[str]:
+    """Convert structured market signals into seed summary strings for agent prompts."""
+    seeds = []
+
+    short = structured_data.get("source_asic_short", {})
+    if short:
+        pct = short.get("pct_shorted", 0)
+        sig = short.get("signal", "UNKNOWN")
+        context = {
+            "HIGH": "significant institutional conviction this stock will underperform",
+            "ELEVATED": "meaningful institutional skepticism",
+            "NORMAL": "short interest within normal range",
+            "LOW": "shorts not positioned against this stock",
+        }.get(sig, "")
+        seeds.append(f"[MARKET] ASIC short interest: {pct:.2f}% [{sig}] — {context}")
+
+    director = structured_data.get("source_director", {})
+    if director:
+        sig = director.get("signal", "NEUTRAL")
+        net = director.get("net_buy_value", 0)
+        buys = director.get("buy_count", 0)
+        sells = director.get("sell_count", 0)
+        context = {
+            "STRONG_BUY": "directors buying heavily — strong insider conviction",
+            "BUY": "net insider buying — directors more bullish than bearish",
+            "NEUTRAL": "mixed or minimal insider activity",
+            "SELL": "net insider selling — directors reducing exposure",
+            "STRONG_SELL": "significant insider selling",
+        }.get(sig, "")
+        net_str = f"+${net:,.0f}" if net > 0 else f"-${abs(net):,.0f}"
+        seeds.append(
+            f"[MARKET] Director trading: {buys} buys, {sells} sells, "
+            f"net {net_str} [{sig}] — {context}"
+        )
+
+    yf = structured_data.get("source_yfinance", {})
+    spread = yf.get("analyst_spread_pct")
+    if spread and spread > 0:
+        hi = yf.get("targetHighPrice")
+        lo = yf.get("targetLowPrice")
+        quality = yf.get("analyst_consensus_quality", "N/A")
+        context = {
+            "HIGH_DISAGREEMENT": "analysts widely split — wide range of outcomes possible",
+            "MODERATE_DISAGREEMENT": "moderate analyst disagreement on fair value",
+            "CONSENSUS": "analysts broadly aligned on valuation",
+        }.get(quality, "")
+        range_str = f"${lo:.2f}–${hi:.2f} " if lo and hi else ""
+        seeds.append(
+            f"[MARKET] Analyst target range: {range_str}(spread {spread:.0f}%) "
+            f"[{quality}] — {context}"
+        )
+
+    return seeds
 SEED_CACHE_TTL_HOURS = 6
 SEED_CACHE_MIN_QUALITY = 0.6
 
@@ -130,6 +185,12 @@ async def _run_pipeline_inner(
             f"[{s.seed_type.value.upper()}] {s.content}"
             for s in harvest.seeds
         ]
+
+        # Inject market signal seeds from structured data
+        if harvest.structured_data:
+            signal_seeds = _build_market_signal_seeds(harvest.structured_data)
+            seed_summaries.extend(signal_seeds)
+
         ticker_bias = harvest.ticker_bias_score
 
         # Store seed_quality + seed_data for future cache hits

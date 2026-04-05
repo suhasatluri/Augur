@@ -8,6 +8,8 @@ yfinance
 lxml
 beautifulsoup4
 httpx
+playwright
+playwright-stealth
 pypdf
 python-logging-loki
 prometheus-client
