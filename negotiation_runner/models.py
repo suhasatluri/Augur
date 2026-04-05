@@ -66,5 +66,6 @@ class SimulationResult(BaseModel):
     convergence_score: float  # 1.0 - std_dev (higher = more consensus)
     high_uncertainty: bool    # True if std_dev > 0.25
     round_summaries: list[RoundSummary]
+    swing_factors: list[str] = Field(default_factory=list)
     duration_ms: float
     status: str = "complete"

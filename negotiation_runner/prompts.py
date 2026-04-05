@@ -39,7 +39,7 @@ Round: {round_number} of {total_rounds}
 
 Distribution: Mean={mean_prob:.3f}, Median={median_prob:.3f}, StdDev={std_dev:.3f}
 Bulls={bull_count} | Neutral={neutral_count} | Bears={bear_count}
-
+{moderator_brief}
 === YOUR AGENTS ({archetype}, batch of {batch_size}) ===
 Process each agent below. For each one:
 - Consider their persona, methodology, and biases
@@ -71,10 +71,10 @@ Conviction threshold: {conviction_threshold:.2f} | Risk tolerance: {risk_toleran
 Current probability: {current_probability:.3f}
 Current conviction: {conviction:.3f}
 Previous rounds:
-{round_history}"""
+{round_history}{challenge}"""
 
 
-def build_agent_block(agent) -> str:
+def build_agent_block(agent, outlier_challenge: str | None = None) -> str:
     """Build the text block for a single agent in the batch prompt."""
     if agent.round_history:
         history_lines = []
@@ -86,6 +86,13 @@ def build_agent_block(agent) -> str:
         history_text = "\n".join(history_lines)
     else:
         history_text = "  (first round — no history)"
+
+    challenge = ""
+    if outlier_challenge:
+        challenge = (
+            f"\nMODERATOR CHALLENGE: {outlier_challenge}"
+            f"\n(You are an outlier. Address this directly in your reasoning.)"
+        )
 
     return AGENT_BLOCK_TEMPLATE.format(
         name=agent.name,
@@ -99,4 +106,5 @@ def build_agent_block(agent) -> str:
         current_probability=agent.current_probability,
         conviction=agent.conviction,
         round_history=history_text,
+        challenge=challenge,
     )

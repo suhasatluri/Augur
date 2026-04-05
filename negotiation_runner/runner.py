@@ -27,6 +27,7 @@ from negotiation_runner.models import (
     RoundSummary,
     SimulationResult,
 )
+from negotiation_runner.moderator import ModeratorAgent
 from negotiation_runner.prompts import (
     DEBATE_BATCH_PROMPT,
     ROUND_SUMMARY_PROMPT,
@@ -96,6 +97,9 @@ class NegotiationRunner:
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self._db_url = database_url
         self.num_rounds = num_rounds
+        self.moderator = ModeratorAgent(self.client)
+        self._outlier_map: dict[str, str] = {}
+        self._final_swing_factors: list[str] = []
 
     async def run(self, simulation_id: str, ticker: str, seed_summaries: list[str] | None = None, reporting_date: str | None = None) -> SimulationResult:
         """Execute a full negotiation simulation."""
@@ -128,6 +132,7 @@ class NegotiationRunner:
 
         agent_map = {a.id: a for a in agents}
         round_summaries: list[RoundSummary] = []
+        current_moderator_brief = ""
 
         for round_num in range(1, self.num_rounds + 1):
             round_start = time.monotonic()
@@ -149,7 +154,8 @@ class NegotiationRunner:
 
             debate_tasks = [
                 self._debate_archetype_batch(
-                    ticker, round_num, summary, archetype, group
+                    ticker, round_num, summary, archetype, group,
+                    moderator_brief=current_moderator_brief,
                 )
                 for archetype, group in archetype_groups.items()
             ]
@@ -195,6 +201,22 @@ class NegotiationRunner:
                 persist_tasks.append(update_agent_state(pool, a))
             await asyncio.gather(*persist_tasks)
 
+            # 7. Moderator: extract arguments, flag outliers, track swing factors
+            if round_num < self.num_rounds:
+                mod_output = await self.moderator.moderate(
+                    ticker=ticker,
+                    round_number=round_num,
+                    agents=agents,
+                    round_results=all_round_results,
+                )
+                current_moderator_brief = mod_output.moderator_brief
+                self._outlier_map = {
+                    aid: mod_output.outlier_challenge or ""
+                    for aid in mod_output.outlier_agent_ids
+                }
+            else:
+                self._final_swing_factors = self.moderator.get_final_swing_factors()
+
             round_elapsed = (time.monotonic() - round_start) * 1000
             logger.info(
                 f"[runner] Round {round_num} complete: mean={summary.mean_probability:.3f} "
@@ -220,6 +242,7 @@ class NegotiationRunner:
             convergence_score=convergence,
             high_uncertainty=high_uncertainty,
             round_summaries=round_summaries,
+            swing_factors=self._final_swing_factors,
             duration_ms=round(elapsed, 1),
         )
 
@@ -282,9 +305,13 @@ class NegotiationRunner:
         summary: RoundSummary,
         archetype: str,
         agents: list[AgentState],
+        moderator_brief: str = "",
     ) -> list[RoundResult]:
         """Run one Sonnet call for all agents of an archetype."""
-        agent_blocks = "\n\n".join(build_agent_block(a) for a in agents)
+        agent_blocks = "\n\n".join(
+            build_agent_block(a, outlier_challenge=self._outlier_map.get(a.id))
+            for a in agents
+        )
 
         prompt = DEBATE_BATCH_PROMPT.format(
             ticker=ticker,
@@ -299,6 +326,7 @@ class NegotiationRunner:
             bull_count=summary.bull_count,
             neutral_count=summary.neutral_count,
             bear_count=summary.bear_count,
+            moderator_brief=moderator_brief,
             archetype=archetype,
             batch_size=len(agents),
             agent_blocks=agent_blocks,
