@@ -73,6 +73,16 @@ def _build_market_signal_seeds(structured_data: dict) -> list[str]:
             f"[{quality}] — {context}"
         )
 
+    mi_fin = structured_data.get("source_mi_financials", {})
+    if mi_fin and mi_fin.get("npat_m") is not None:
+        npat = mi_fin["npat_m"]
+        npat_prior = mi_fin.get("npat_prior_m")
+        growth_str = ""
+        if npat_prior and npat_prior != 0:
+            g = ((npat - npat_prior) / abs(npat_prior)) * 100
+            growth_str = f" ({g:+.1f}% YoY)"
+        seeds.append(f"[MARKET] NPAT: ${npat:,.0f}M{growth_str} (Market Index 10yr history)")
+
     return seeds
 SEED_CACHE_TTL_HOURS = 6
 SEED_CACHE_MIN_QUALITY = 0.6

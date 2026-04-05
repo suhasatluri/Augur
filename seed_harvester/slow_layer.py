@@ -115,6 +115,22 @@ def _build_structured_data_block(yf_data: dict, extra_data: Optional[dict] = Non
     if ned:
         lines.append(f"Next Earnings Date: {ned}")
 
+    # Market Index financials
+    if extra_data:
+        mi_fin = extra_data.get("source_mi_financials", {})
+        if mi_fin:
+            npat = mi_fin.get("npat_m")
+            npat_prior = mi_fin.get("npat_prior_m")
+            rev = mi_fin.get("revenue_m")
+            if npat is not None:
+                growth_str = ""
+                if npat_prior and npat_prior != 0:
+                    g = ((npat - npat_prior) / abs(npat_prior)) * 100
+                    growth_str = f" ({g:+.1f}% YoY)"
+                lines.append(f"NPAT: ${npat:,.0f}M{growth_str} (Market Index)")
+            if rev is not None:
+                lines.append(f"Revenue: ${rev:,.0f}M (Market Index)")
+
     # Market signals from ASIC + director trades
     if extra_data:
         short = extra_data.get("source_asic_short", {})

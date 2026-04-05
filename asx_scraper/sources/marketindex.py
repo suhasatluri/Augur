@@ -1,116 +1,166 @@
-"""Market Index scraper — director transactions and 10-year financials.
+"""Market Index scraper using curl_cffi.
 
-Requires MARKETINDEX_COOKIE in .env for authenticated access.
-Without cookie, requests may return 403.
+Impersonates Chrome TLS fingerprint to bypass Cloudflare bot detection.
+No cookies, no auth, no Playwright needed.
+
+Data extracted:
+  /asx/{ticker}/financials → 10-year financial history
+  /asx/{ticker}            → director transactions
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import re
 import time
-from datetime import datetime
 from typing import Optional
 
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests as cffi
 
 logger = logging.getLogger(__name__)
 
 BASE = "https://www.marketindex.com.au"
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-AU,en;q=0.9",
-    "Referer": "https://www.marketindex.com.au/",
-    "Connection": "keep-alive",
-}
+IMPERSONATE = "chrome131"
 
 
-def get_session() -> requests.Session:
-    """Create a session with optional cookie auth."""
-    s = requests.Session()
-    s.headers.update(HEADERS)
-    cookie = os.getenv("MARKETINDEX_COOKIE")
-    if cookie:
-        s.cookies.set("market_index_session", cookie, domain="www.marketindex.com.au")
-        uid = os.getenv("MARKETINDEX_USER_ID", "142704")
-        s.cookies.set("mi_auth_user", uid, domain="www.marketindex.com.au")
-    else:
-        logger.warning("MARKETINDEX_COOKIE not set — pages may be restricted")
-    return s
+def _get(url: str, retries: int = 2) -> Optional[str]:
+    """Fetch URL using Chrome TLS impersonation. Returns HTML or None."""
+    for attempt in range(retries):
+        try:
+            time.sleep(1.5)
+            r = cffi.get(
+                url,
+                impersonate=IMPERSONATE,
+                timeout=25,
+                headers={
+                    "Accept": "text/html,application/xhtml+xml,*/*",
+                    "Accept-Language": "en-AU,en;q=0.9",
+                    "Referer": BASE,
+                },
+            )
+            if r.status_code == 200:
+                return r.text
+            logger.warning(f"GET {url} returned {r.status_code}")
+        except Exception as e:
+            logger.warning(f"GET {url} attempt {attempt + 1} failed: {e}")
+    return None
 
 
-def fetch_page(url: str, session: Optional[requests.Session] = None) -> BeautifulSoup:
-    """Fetch and parse a page with rate limiting."""
-    if session is None:
-        session = get_session()
-    time.sleep(1.5)
-    r = session.get(url, timeout=25)
-    r.raise_for_status()
-    return BeautifulSoup(r.text, "lxml")
-
-
-def _parse_num(s: str) -> float:
-    """Parse a number string, stripping currency/commas."""
+def _parse_val(text: str) -> Optional[float]:
+    """Parse a financial value string. Handles negatives in parens."""
+    if not text or text.strip() in ("-", ""):
+        return None
+    neg = "(" in text
+    clean = re.sub(r"[^0-9.]", "", text)
     try:
-        return float(re.sub(r"[^0-9.\-]", "", s))
-    except (ValueError, TypeError):
-        return 0.0
+        v = float(clean)
+        return -v if neg else v
+    except ValueError:
+        return None
 
 
-def get_director_transactions(
-    ticker: str, session: Optional[requests.Session] = None
-) -> list[dict]:
-    """Scrape 12 months of director transactions from /asx/{ticker}."""
+def get_financials(ticker: str) -> dict:
+    """Scrape 10-year financial history from /asx/{ticker}/financials."""
+    url = f"{BASE}/asx/{ticker.lower()}/financials"
+    html = _get(url)
+    if not html:
+        logger.error(f"{ticker}: Market Index financials fetch failed")
+        return {}
+
+    soup = BeautifulSoup(html, "lxml")
+    tables = soup.find_all("table")
+    if not tables:
+        logger.warning(f"{ticker}: no tables on financials page")
+        return {}
+
+    main = tables[0]
+    rows = main.find_all("tr")
+    if not rows:
+        return {}
+
+    years = [cell.get_text(strip=True) for cell in rows[0].find_all(["th", "td"])][1:]
+
+    metrics: dict[str, list] = {}
+    for row in rows[1:]:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        name = cells[0].get_text(strip=True)
+        vals = [_parse_val(c.get_text(strip=True)) for c in cells[1:]]
+        metrics[name] = vals
+
+    npat = metrics.get("NPAT ($M)", [])
+    npat_clean = [v for v in npat if v is not None]
+    revenue = metrics.get("Revenue ($M)", [])
+
+    beat_rate = None
+    if len(npat_clean) >= 3:
+        beats = sum(1 for i in range(len(npat_clean) - 1) if npat_clean[i] > npat_clean[i + 1])
+        beat_rate = round(beats / (len(npat_clean) - 1), 3)
+
+    result = {
+        "ticker": ticker.upper(),
+        "years": years,
+        "npat": npat,
+        "revenue": revenue,
+        "eps_cents": metrics.get("EPS (¢)", []),
+        "dps_cents": metrics.get("DPS (¢)", []),
+        "beat_rate": beat_rate,
+        "npat_m": npat_clean[0] if npat_clean else None,
+        "npat_prior_m": npat_clean[1] if len(npat_clean) > 1 else None,
+        "revenue_m": next((v for v in revenue if v is not None), None),
+    }
+    logger.info(f"{ticker}: MI financials OK — {len(years)} years, beat_rate={beat_rate}")
+    return result
+
+
+def get_director_transactions(ticker: str) -> dict:
+    """Scrape 12-month director transactions from /asx/{ticker}."""
     url = f"{BASE}/asx/{ticker.lower()}"
-    try:
-        soup = fetch_page(url, session)
-    except Exception as e:
-        logger.error(f"{ticker} director fetch failed: {e}")
-        return []
+    html = _get(url)
 
-    # Find director transactions table
+    default = {"signal": "NEUTRAL", "signal_score": 0.5, "net_buy_value": 0, "buy_count": 0, "sell_count": 0, "transactions": []}
+    if not html:
+        logger.error(f"{ticker}: MI director fetch failed")
+        return default
+
+    soup = BeautifulSoup(html, "lxml")
     target = None
     for t in soup.find_all("table"):
-        headers = [th.get_text(strip=True) for th in t.find_all("th")]
         text = t.get_text()
+        headers = [th.get_text(strip=True) for th in t.find_all("th")]
         if ("Director" in headers or "Director" in text) and ("Buy" in text or "Sell" in text):
             target = t
             break
 
     if not target:
-        logger.warning(f"{ticker}: no director table found")
-        return []
+        logger.info(f"{ticker}: no director table — no insider activity")
+        return default
 
-    results = []
+    transactions = []
     for row in target.find_all("tr")[1:]:
         cells = [td.get_text(strip=True) for td in row.find_all("td")]
         if len(cells) < 6:
             continue
-        results.append({
+
+        def _num(s):
+            try:
+                return float(re.sub(r"[^0-9.]", "", s))
+            except (ValueError, TypeError):
+                return 0.0
+
+        transactions.append({
             "date": cells[0],
             "director": cells[1],
             "type": cells[2],
-            "amount": int(_parse_num(cells[3])),
-            "price": _parse_num(cells[4]),
-            "value": _parse_num(cells[5]),
+            "amount": int(_num(cells[3])),
+            "price": _num(cells[4]),
+            "value": _num(cells[5]),
             "notes": cells[6] if len(cells) > 6 else "",
             "ticker": ticker.upper(),
-            "scraped_at": datetime.now().isoformat(),
         })
 
-    logger.info(f"{ticker}: {len(results)} director transactions")
-    return results
-
-
-def compute_director_signal(transactions: list[dict]) -> dict:
-    """Net buy value signal from on-market director trades (excludes option grants)."""
     buys = [t for t in transactions if t["type"] == "Buy"]
     sells = [t for t in transactions if t["type"] == "Sell"]
     buy_val = sum(t["value"] for t in buys)
@@ -128,73 +178,22 @@ def compute_director_signal(transactions: list[dict]) -> dict:
     else:
         sig, score = "STRONG_SELL", 0.20
 
+    logger.info(f"{ticker}: MI director signal={sig} buys={len(buys)} sells={len(sells)} net=${net:,.0f}")
     return {
+        "signal": sig,
+        "signal_score": round(score, 3),
         "net_buy_value": round(net, 2),
         "buy_count": len(buys),
         "sell_count": len(sells),
-        "signal": sig,
-        "signal_score": score,
+        "transactions": transactions,
     }
 
 
-def get_financials(ticker: str, session: Optional[requests.Session] = None) -> dict:
-    """Scrape 10-year financials from /asx/{ticker}/financials."""
-    url = f"{BASE}/asx/{ticker.lower()}/financials"
-    try:
-        soup = fetch_page(url, session)
-    except Exception as e:
-        logger.error(f"{ticker} financials fetch failed: {e}")
-        return {}
-
-    tables = soup.find_all("table")
-    if not tables:
-        return {}
-
-    main = tables[0]
-    rows = main.find_all("tr")
-    if not rows:
-        return {}
-
-    years = [cell.get_text(strip=True) for cell in rows[0].find_all(["th", "td"])][1:]
-
-    def parse_val(text: str):
-        if not text or text == "-":
-            return None
-        neg = text.startswith("(")
-        clean = re.sub(r"[^0-9.]", "", text)
-        try:
-            v = float(clean)
-            return -v if neg else v
-        except ValueError:
-            return None
-
-    metrics = {}
-    for row in rows[1:]:
-        cells = row.find_all("td")
-        if not cells:
-            continue
-        name = cells[0].get_text(strip=True)
-        vals = [parse_val(c.get_text(strip=True)) for c in cells[1:]]
-        metrics[name] = vals
-
+def scrape_ticker(ticker: str) -> dict:
+    """Scrape all Market Index data for one ticker."""
+    logger.info(f"[MarketIndex] Scraping {ticker}")
     return {
         "ticker": ticker.upper(),
-        "years": years,
-        "npat": metrics.get("NPAT ($M)", []),
-        "npat_before_abnormals": metrics.get("NPAT before Abnormals ($M)", []),
-        "revenue": metrics.get("Revenue ($M)", []),
-        "eps_cents": metrics.get("EPS (¢)", []),
-        "dps_cents": metrics.get("DPS (¢)", []),
-        "scraped_at": datetime.now().isoformat(),
+        "financials": get_financials(ticker),
+        "director_signal": get_director_transactions(ticker),
     }
-
-
-def compute_beat_rate(financials: dict) -> Optional[float]:
-    """Proxy beat rate from year-on-year NPAT growth. Positive growth = beat proxy."""
-    npat = [v for v in financials.get("npat", []) if v is not None]
-    if len(npat) < 3:
-        return None
-    # npat[0] is most recent year, npat[1] is prior year, etc.
-    beats = sum(1 for i in range(len(npat) - 1) if npat[i] > npat[i + 1])
-    total = len(npat) - 1
-    return round(beats / total, 3) if total else None

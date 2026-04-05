@@ -8,6 +8,7 @@ yfinance
 lxml
 beautifulsoup4
 httpx
+curl_cffi>=0.6.2
 playwright
 playwright-stealth
 pypdf

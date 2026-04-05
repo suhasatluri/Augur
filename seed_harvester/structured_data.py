@@ -118,8 +118,11 @@ class StructuredDataFetcher:
         # --- Source 4: ASIC short interest ---
         data = await self._enrich_short_interest(ticker, data)
 
-        # --- Source 5: Director transactions from Neon ---
+        # --- Source 5: Director transactions (Market Index → Neon fallback) ---
         data = await self._enrich_director_signal(ticker, data)
+
+        # --- Source 6: Market Index financials (NPAT, beat rate) ---
+        data = await self._enrich_mi_financials(ticker, data)
 
         return data
 
@@ -147,7 +150,29 @@ class StructuredDataFetcher:
         return data
 
     async def _enrich_director_signal(self, ticker: str, data: dict) -> dict:
-        """Look up director transaction signal from Neon (pre-scraped via Appendix 3Y)."""
+        """Get director signal — tries Market Index (curl_cffi) first, falls back to Neon."""
+        # Try Market Index live scrape (curl_cffi bypasses Cloudflare)
+        try:
+            from asx_scraper.sources.marketindex import get_director_transactions as mi_directors
+
+            def _fetch():
+                return mi_directors(ticker)
+
+            result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _fetch),
+                timeout=30.0,
+            )
+            if result and result.get("signal") != "NEUTRAL":
+                data["source_director"] = result
+                logger.info(
+                    f"[structured] MI director signal for {ticker}: "
+                    f"{result['signal']} (net=${result['net_buy_value']:,.0f})"
+                )
+                return data
+        except Exception as e:
+            logger.debug(f"[structured] Market Index director scrape failed for {ticker}: {e}")
+
+        # Fall back to Neon (pre-scraped Appendix 3Y data)
         try:
             from db.schema import get_pool
             from asx_scraper.sources.director_trades import compute_director_signal as _compute
@@ -164,11 +189,39 @@ class StructuredDataFetcher:
                     signal = _compute(trades)
                     data["source_director"] = signal
                     logger.info(
-                        f"[structured] Director signal for {ticker}: "
+                        f"[structured] Neon director signal for {ticker}: "
                         f"{signal['signal']} (net=${signal['net_buy_value']:,.0f})"
                     )
         except Exception as e:
             logger.debug(f"[structured] Director signal lookup failed for {ticker}: {e}")
+        return data
+
+    async def _enrich_mi_financials(self, ticker: str, data: dict) -> dict:
+        """Add Market Index 10-year financials (NPAT, revenue) if available."""
+        try:
+            from asx_scraper.sources.marketindex import get_financials as mi_financials
+
+            def _fetch():
+                return mi_financials(ticker)
+
+            result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _fetch),
+                timeout=30.0,
+            )
+            if result and result.get("npat_m") is not None:
+                data["source_mi_financials"] = {
+                    "npat_m": result["npat_m"],
+                    "npat_prior_m": result.get("npat_prior_m"),
+                    "revenue_m": result.get("revenue_m"),
+                    "beat_rate": result.get("beat_rate"),
+                    "years": result.get("years", [])[:5],
+                }
+                logger.info(
+                    f"[structured] MI financials for {ticker}: "
+                    f"NPAT=${result['npat_m']}M, beat_rate={result.get('beat_rate')}"
+                )
+        except Exception as e:
+            logger.debug(f"[structured] Market Index financials failed for {ticker}: {e}")
         return data
 
     async def _fetch_beat_miss(self, ticker: str) -> dict:
