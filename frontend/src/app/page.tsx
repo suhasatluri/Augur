@@ -93,6 +93,23 @@ export default function Home() {
         </button>
       </form>
 
+      {/* Video Teaser */}
+      <a
+        href="/about"
+        className="block max-w-md mx-auto bg-surface border border-gold/20 rounded-lg p-5 hover:border-gold/40 transition group"
+      >
+        <div className="flex items-center gap-3 mb-2">
+          <span className="text-gold text-lg">&#9655;</span>
+          <span className="font-mono text-xs tracking-widest uppercase text-gold/80 group-hover:text-gold transition">
+            Watch how Augur works
+          </span>
+          <span className="text-gold/40 ml-auto group-hover:text-gold/70 transition">→</span>
+        </div>
+        <p className="text-muted text-xs font-mono leading-relaxed">
+          50 analysts debate an ASX earnings outcome in real time. See it happen.
+        </p>
+      </a>
+
       {/* Community Activity */}
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-2 mb-4">
