@@ -38,7 +38,7 @@ def get_session() -> requests.Session:
     s.headers.update(HEADERS)
     cookie = os.getenv("MARKETINDEX_COOKIE")
     if cookie:
-        s.cookies.set("mi_session", cookie, domain="www.marketindex.com.au")
+        s.cookies.set("market_index_session", cookie, domain="www.marketindex.com.au")
         uid = os.getenv("MARKETINDEX_USER_ID", "142704")
         s.cookies.set("mi_auth_user", uid, domain="www.marketindex.com.au")
     else:
