@@ -12,10 +12,17 @@ from datetime import date, datetime
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+from monitoring.grafana import (
+    setup_loki_logging,
+    api_requests_total,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 
 load_dotenv()
 
@@ -45,6 +52,17 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["X-API-Key", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def track_requests(request: Request, call_next):
+    response = await call_next(request)
+    api_requests_total.labels(
+        endpoint=request.url.path,
+        method=request.method,
+        status=str(response.status_code),
+    ).inc()
+    return response
 
 # ---------------------------------------------------------------------------
 # In-memory state (V1 — Redis in V2)
@@ -223,6 +241,7 @@ async def _cleanup_stale_simulations() -> None:
 @app.on_event("startup")
 async def startup() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    setup_loki_logging()
     _load_api_keys()
     await _cleanup_stale_simulations()
     logger.info("[api] App started — schema will be ensured on first DB request")
@@ -413,6 +432,12 @@ async def activity(period: str = "today"):
         ))
 
     return items
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint for Grafana scraping."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health", response_model=HealthResponse)

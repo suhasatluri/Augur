@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { GrafanaInit } from "@/components/GrafanaInit";
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body
         className={`${cormorant.variable} ${jetbrains.variable} font-mono antialiased bg-background text-foreground`}
       >
+        <GrafanaInit />
         <div className="min-h-screen flex flex-col">
           <header className="border-b border-surface-border px-6 py-4 flex items-center justify-between">
             <a href="/" className="flex items-center gap-3">
