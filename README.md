@@ -36,13 +36,15 @@ Investor Presentations ─────┘
 yfinance ──→ current prices ─┤
              recommendations ┤
                              ▼
-              seed_harvester (slow + fast layers)
+              seed cache (6hr TTL in Neon)
+              ├─ HIT ──→ skip harvest (~125s)
+              └─ MISS ─→ seed_harvester (slow + fast layers)
                              │
                              ▼
-              persona_forge (50 agents)
+              persona_forge (50 agents, 5 parallel Sonnet calls)
                              │
                              ▼
-              negotiation_runner (3 rounds)
+              negotiation_runner (3 rounds, parallel archetype batches)
                              │
                              ▼
               prediction_synthesiser → verdict
