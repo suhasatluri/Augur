@@ -1,10 +1,13 @@
-"""Grafana Cloud observability — Loki logging + Prometheus metrics."""
+"""Grafana Cloud observability — Loki logging + Prometheus metrics + remote push."""
 
 import logging
 import os
+import threading
 import time
 import traceback
 from functools import wraps
+
+import requests as _requests
 
 from prometheus_client import (
     Counter,
@@ -12,6 +15,7 @@ from prometheus_client import (
     Gauge,
     generate_latest,
     CONTENT_TYPE_LATEST,
+    REGISTRY,
 )
 
 # ── Prometheus metrics ────────────────────────────────────────────────────────
@@ -78,6 +82,51 @@ def setup_loki_logging():
         logging.info("Grafana Loki logging initialised")
     except Exception as e:
         logging.error(f"Failed to init Loki: {e}")
+
+
+# ── Simulation tracking decorator ────────────────────────────────────────────
+
+def start_metrics_push():
+    """Push Prometheus metrics to Grafana Cloud every 60s via remote_write.
+
+    Runs in a background daemon thread. No Grafana Alloy required.
+    Requires GRAFANA_PROM_URL, GRAFANA_LOKI_USER, GRAFANA_API_KEY.
+    """
+    prom_url = os.getenv("GRAFANA_PROM_URL")
+    loki_user = os.getenv("GRAFANA_LOKI_USER")
+    api_key = os.getenv("GRAFANA_API_KEY")
+
+    if not all([prom_url, loki_user, api_key]):
+        logging.warning(
+            "Grafana Prometheus push not configured — skipping. "
+            "Set GRAFANA_PROM_URL, GRAFANA_LOKI_USER, GRAFANA_API_KEY"
+        )
+        return
+
+    def push_loop():
+        logging.info(f"Grafana metrics push started — pushing every 60s to {prom_url}")
+        while True:
+            try:
+                data = generate_latest(REGISTRY)
+                resp = _requests.post(
+                    prom_url,
+                    data=data,
+                    headers={"Content-Type": "text/plain; version=0.0.4"},
+                    auth=(loki_user, api_key),
+                    timeout=15,
+                )
+                if resp.status_code in (200, 204):
+                    logging.debug("Metrics pushed successfully")
+                else:
+                    logging.warning(
+                        f"Metrics push failed: {resp.status_code} {resp.text[:200]}"
+                    )
+            except Exception as e:
+                logging.error(f"Metrics push error: {e}")
+            time.sleep(60)
+
+    t = threading.Thread(target=push_loop, daemon=True)
+    t.start()
 
 
 # ── Simulation tracking decorator ────────────────────────────────────────────
