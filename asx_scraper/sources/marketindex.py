@@ -74,12 +74,42 @@ def get_financials(ticker: str) -> dict:
         logger.warning(f"{ticker}: no tables on financials page")
         return {}
 
-    main = tables[0]
+    # Find the table with year headers (e.g. "06/2025", "06/2024")
+    main = None
+    for t in tables:
+        header_row = t.find("tr")
+        if not header_row:
+            continue
+        header_text = header_row.get_text()
+        if re.search(r"\d{2}/\d{4}", header_text):
+            main = t
+            break
+
+    if not main:
+        logger.warning(f"{ticker}: no year-header table found on financials page")
+        return {}
+
     rows = main.find_all("tr")
     if not rows:
         return {}
 
     years = [cell.get_text(strip=True) for cell in rows[0].find_all(["th", "td"])][1:]
+
+    def _parse_cell(text: str) -> Optional[float]:
+        if not text:
+            return None
+        text = text.strip()
+        if text in ("-", "", "n/a", "N/A"):
+            return None
+        neg = text.startswith("(")
+        clean = re.sub(r"[^0-9.]", "", text)
+        if not clean:
+            return None
+        try:
+            v = float(clean)
+            return -v if neg else v
+        except ValueError:
+            return None
 
     metrics: dict[str, list] = {}
     for row in rows[1:]:
@@ -87,7 +117,7 @@ def get_financials(ticker: str) -> dict:
         if not cells:
             continue
         name = cells[0].get_text(strip=True)
-        vals = [_parse_val(c.get_text(strip=True)) for c in cells[1:]]
+        vals = [_parse_cell(c.get_text(strip=True)) for c in cells[1:]]
         metrics[name] = vals
 
     npat = metrics.get("NPAT ($M)", [])
@@ -161,8 +191,29 @@ def get_director_transactions(ticker: str) -> dict:
             "ticker": ticker.upper(),
         })
 
-    buys = [t for t in transactions if t["type"] == "Buy"]
-    sells = [t for t in transactions if t["type"] == "Sell"]
+    # Only count on-market trades from the last 12 months
+    _EXCLUDED = {
+        "issued", "exercise", "exercised", "vested", "vesting", "grant",
+        "granted", "rights", "option", "options", "off-market", "transfer",
+        "transferred",
+    }
+
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(days=365)
+
+    def _is_recent(txn: dict) -> bool:
+        try:
+            d = datetime.strptime(txn["date"], "%d/%m/%y")
+            return d >= cutoff
+        except (ValueError, KeyError):
+            return True  # Include if date unparseable
+
+    on_market = [
+        t for t in transactions
+        if t["type"].lower().strip() not in _EXCLUDED and _is_recent(t)
+    ]
+    buys = [t for t in on_market if t["type"].lower() == "buy"]
+    sells = [t for t in on_market if t["type"].lower() == "sell"]
     buy_val = sum(t["value"] for t in buys)
     sell_val = sum(t["value"] for t in sells)
     net = buy_val - sell_val
