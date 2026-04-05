@@ -147,9 +147,10 @@ class StructuredDataFetcher:
         return data
 
     async def _enrich_director_signal(self, ticker: str, data: dict) -> dict:
-        """Look up director transaction signal from Neon if previously scraped."""
+        """Look up director transaction signal from Neon (pre-scraped via Appendix 3Y)."""
         try:
             from db.schema import get_pool
+            from asx_scraper.sources.director_trades import compute_director_signal as _compute
 
             pool = await get_pool()
             async with pool.acquire() as conn:
@@ -159,31 +160,13 @@ class StructuredDataFetcher:
                     ticker.upper(),
                 )
                 if rows:
-                    buys = [r for r in rows if r["txn_type"] == "Buy"]
-                    sells = [r for r in rows if r["txn_type"] == "Sell"]
-                    buy_val = sum(float(r["value"] or 0) for r in buys)
-                    sell_val = sum(float(r["value"] or 0) for r in sells)
-                    net = buy_val - sell_val
-
-                    if net > 1_000_000:
-                        sig, score = "STRONG_BUY", 0.75
-                    elif net > 100_000:
-                        sig, score = "BUY", 0.65
-                    elif net > -100_000:
-                        sig, score = "NEUTRAL", 0.50
-                    elif net > -1_000_000:
-                        sig, score = "SELL", 0.35
-                    else:
-                        sig, score = "STRONG_SELL", 0.20
-
-                    data["source_director"] = {
-                        "net_buy_value": round(net, 2),
-                        "buy_count": len(buys),
-                        "sell_count": len(sells),
-                        "signal": sig,
-                        "signal_score": score,
-                    }
-                    logger.info(f"[structured] Director signal for {ticker}: {sig} (net=${net:,.0f})")
+                    trades = [{"type": r["txn_type"], "value": float(r["value"] or 0)} for r in rows]
+                    signal = _compute(trades)
+                    data["source_director"] = signal
+                    logger.info(
+                        f"[structured] Director signal for {ticker}: "
+                        f"{signal['signal']} (net=${signal['net_buy_value']:,.0f})"
+                    )
         except Exception as e:
             logger.debug(f"[structured] Director signal lookup failed for {ticker}: {e}")
         return data
