@@ -15,15 +15,16 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 
 ## Pipeline Flow
 POST /simulate → augur_api.py → pipeline.py →
-asx_scraper (ASX API + PDF extraction + company intel) →
-seed_harvester (yfinance + Claude web_search + company intel) →
-persona_forge (50 agents, bias-anchored) →
-negotiation_runner (3 rounds) →
+  seed cache check (6hr TTL, ticker key, quality ≥ 0.6) →
+  IF MISS: asx_scraper + seed_harvester (yfinance + Claude + company intel) →
+  IF HIT: skip harvest, use cached seed_data JSONB →
+persona_forge (50 agents via 5 parallel Sonnet calls, bias-anchored) →
+negotiation_runner (3 rounds, 5 parallel archetype batches per round) →
 prediction_synthesiser → results in Neon
 
 ## Key Files
 - augur_api.py — FastAPI endpoints, job queue
-- pipeline.py — orchestrates full simulation
+- pipeline.py — orchestrates full simulation (6-hour seed cache, parallel stages)
 - asx_scraper/asx_api.py — ASX Markit Digital API client (official ASX data)
 - asx_scraper/pdf_extractor.py — downloads + extracts data from Appendix 4D/4E PDFs
 - asx_scraper/ir_harvester.py — finds earnings PDFs from company IR pages
@@ -38,10 +39,10 @@ prediction_synthesiser → results in Neon
 - seed_harvester/fast_layer.py — Haiku sentiment + company intel + Perplexity news
 - seed_harvester/perplexity_harvester.py — Perplexity Sonar real-time financial news
 - seed_harvester/structured_data.py — 5-component ticker_bias_score
-- persona_forge/forge.py — 50 agent creation
+- persona_forge/forge.py — 50 agent creation (5 archetypes forged in parallel via asyncio.gather)
 - negotiation_runner/runner.py — 3-round debate
 - prediction_synthesiser/synthesiser.py — final report
-- db/schema.py — Neon PostgreSQL schema (11 tables, 8 indexes, CASCADE deletes)
+- db/schema.py — Neon PostgreSQL schema (11 tables, 8 indexes, CASCADE deletes, seed_data JSONB on simulations)
 - db/retention.py — retention policy (7d failed, 24h batch, reasoning compression)
 - conftest.py — pytest root path setup
 - tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
@@ -77,12 +78,14 @@ FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 - Neon not Supabase (India outage incident)
 - BSL 1.1 not MIT (commercial protection)
 - reporting_date flows through entire pipeline for date-anchored macro context
+- 6-hour seed cache in pipeline.py — completed simulations cache seed_data JSONB, repeat ticker runs skip harvest (saves ~58s). Cache key is ticker only. TTL 6 hours. Skips cache if seed quality < 0.6
+- Persona forge already parallel — 5 archetypes fire via asyncio.gather, each generating 10 agents in one Sonnet call
 
 ## Current Known Limitations
 - ASX 200 only
 - Beat/miss uses yfinance earnings_estimate consensus (forward EPS + yearAgoEps for latest beat/miss)
 - BHP PDFs timeout from bhp.com CDN — ASX API provides fallback data
-- Simulation duration ~170s (20-ticker batch validated: 20/20 pass, avg 174s)
+- Simulation duration ~170s fresh, ~125s with seed cache HIT (20-ticker batch validated: 20/20 pass, avg 174s)
 - ALU yfinance data unavailable (404) — falls back to neutral bias, still completes
 - No user accounts in V1
 - Company intel limited to top 20 tickers with known IR page URLs
