@@ -15,24 +15,22 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 
 ## Pipeline Flow
 POST /simulate → augur_api.py → pipeline.py →
-  seed cache check (6hr TTL, ticker key, quality ≥ 0.6) →
-  IF MISS: asx_scraper + seed_harvester (yfinance + Claude + company intel) →
-  IF HIT: skip harvest, use cached seed_data JSONB →
-persona_forge (50 agents via 5 parallel Sonnet calls, bias-anchored) →
-negotiation_runner (3 rounds, 5 parallel archetype batches per round) →
+seed_harvester (6hr cache → yfinance + Perplexity + ASX PDFs + company IR) →
+persona_forge (50 agents parallel, bias-anchored) →
+negotiation_runner (3 rounds) →
 prediction_synthesiser → results in Neon
 
 ## Key Files
 - augur_api.py — FastAPI endpoints, job queue
 - pipeline.py — orchestrates full simulation (6-hour seed cache, parallel stages)
 - asx_scraper/asx_api.py — ASX Markit Digital API client (official ASX data)
-- asx_scraper/pdf_extractor.py — downloads + extracts data from Appendix 4D/4E PDFs
-- asx_scraper/ir_harvester.py — finds earnings PDFs from company IR pages
-- asx_scraper/company_intel.py — quarterly updates + investor presentations
-- asx_scraper/orchestrator.py — runs full scrape pipeline per ticker
+- asx_scraper/pdf_extractor.py — extracts EPS, revenue, management quotes from Appendix 4D/4E
+- asx_scraper/ir_harvester.py — company IR pages, known PDF patterns for top 25
+- asx_scraper/company_intel.py — quarterly updates + investor presentations from ASX companies
+- asx_scraper/orchestrator.py — runs full scrape pipeline per ticker, stores to Neon
+- asx_scraper/consensus_harvester.py — analyst consensus via yfinance + Perplexity Sonar
 - asx_scraper/price_scraper.py — yfinance price reactions on earnings dates
 - asx_scraper/metrics_computer.py — beat_rate, credibility scores from asx_earnings
-- asx_scraper/consensus_harvester.py — consensus EPS from yfinance earnings_estimate
 - asx_scraper/finnhub_client.py — Finnhub API (disabled — US consensus, kept for reference)
 - seed_harvester/harvester.py — two-layer cache
 - seed_harvester/slow_layer.py — yfinance + Sonnet
@@ -78,14 +76,15 @@ FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 - Neon not Supabase (India outage incident)
 - BSL 1.1 not MIT (commercial protection)
 - reporting_date flows through entire pipeline for date-anchored macro context
-- 6-hour seed cache in pipeline.py — completed simulations cache seed_data JSONB, repeat ticker runs skip harvest (saves ~58s). Cache key is ticker only. TTL 6 hours. Skips cache if seed quality < 0.6
-- Persona forge already parallel — 5 archetypes fire via asyncio.gather, each generating 10 agents in one Sonnet call
+- Parallel persona forge via asyncio.gather() — all 50 agents forged simultaneously (5 archetypes x 10 agents, one Sonnet call each), saving ~25-30s per simulation
+- 6-hour seed cache — if ticker simulated in last 6hr, return cached seed from Neon (seed_data JSONB). Cache key is ticker only. Skips cache if seed quality < 0.6. BHP cache HIT confirmed at 124.5s vs 182s baseline
+- Phase 3 complete — target duration now 125-180s depending on cache HIT or MISS
 
 ## Current Known Limitations
-- ASX 200 only
+- ASX 100 only (asx_scraper bootstrapped for top tickers)
 - Beat/miss uses yfinance earnings_estimate consensus (forward EPS + yearAgoEps for latest beat/miss)
 - BHP PDFs timeout from bhp.com CDN — ASX API provides fallback data
-- Simulation duration ~170s fresh, ~125s with seed cache HIT (20-ticker batch validated: 20/20 pass, avg 174s)
+- Simulation duration: 125s (cache HIT) / 175s (cache MISS) — Phase 3 complete
 - ALU yfinance data unavailable (404) — falls back to neutral bias, still completes
 - No user accounts in V1
 - Company intel limited to top 20 tickers with known IR page URLs
@@ -125,10 +124,12 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - DATABASE_URL
 
 ## V2 Priorities
-1. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
-2. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
-3. Outcome tracking (outcomes table exists, needs ingestion)
-4. User accounts + simulation history
-5. Bootstrap asx_scraper across full ASX 100
-6. Schedule weekly asx_scraper refresh via GitHub Actions cron
-7. Email alerts for upcoming earnings
+1. Sentry error tracking — FastAPI + Next.js (pre-launch, non-negotiable)
+2. Moderator agent — moderator_agent.py (Phase 4, +$0.10-0.15/sim)
+3. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
+4. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
+5. Outcome tracking (outcomes table exists, needs ingestion)
+6. User accounts + simulation history
+7. Bootstrap asx_scraper across full ASX 100
+8. Schedule weekly asx_scraper refresh via GitHub Actions cron
+9. Email alerts for upcoming earnings
