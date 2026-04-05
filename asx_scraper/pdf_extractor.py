@@ -180,11 +180,177 @@ async def _truncate_pdf(pdf_bytes: bytes, max_pages: int = 80) -> bytes:
         return pdf_bytes
 
 
+EARNINGS_KEYWORDS = [
+    "Appendix 4D", "Appendix 4E", "Half Year Result", "Full Year Result",
+    "Profit Announcement", "Annual Result", "Preliminary Final",
+    "Half Yearly Report", "Results Announcement",
+]
+
+ASX_V2_BASE = "https://www.asx.com.au/asx/v2/statistics"
+
+
+CDN_BASE = "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file"
+CDN_TOKEN = "83ff96335c2d45a094df02a206a39ff4"
+MARKIT_BASE = "https://asx.api.markitdigital.com/asx-research/1.0/companies"
+
+
+def find_earnings_pdfs_markit(ticker: str) -> list[dict]:
+    """Find earnings PDFs via ASX Markit API + CDN (direct PDF download, no JS needed).
+
+    Limited to 5 most recent announcements per ticker (API cap).
+    Returns list of {date, headline, pdf_url, type}.
+    """
+    ticker = ticker.upper()
+    try:
+        ctx = __import__("ssl").create_default_context()
+        req = __import__("urllib.request", fromlist=["Request"]).Request(
+            f"{MARKIT_BASE}/{ticker}/announcements?count=20",
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+        )
+        with __import__("urllib.request").urlopen(req, context=ctx, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        logger.debug(f"[pdf] Markit API failed for {ticker}: {e}")
+        return []
+
+    items = data.get("data", {}).get("items", [])
+    results = []
+    for item in items:
+        headline = item.get("headline", "")
+        if not any(kw.lower() in headline.lower() for kw in EARNINGS_KEYWORDS):
+            continue
+        doc_key = item.get("documentKey", "")
+        if not doc_key:
+            continue
+        results.append({
+            "date": item.get("date", "")[:10],
+            "headline": headline,
+            "pdf_url": f"{CDN_BASE}/{doc_key}?access_token={CDN_TOKEN}",
+            "type": "4D" if "4d" in headline.lower() else "4E" if "4e" in headline.lower() else "RESULTS",
+            "size_kb": 0,
+        })
+
+    logger.info(f"[pdf] Markit: {ticker} has {len(results)} earnings PDFs")
+    return results
+
+
+def find_earnings_pdfs_v2(ticker: str, period: str = "M6") -> list[dict]:
+    """Find earnings PDFs — tries Markit CDN first (direct download), falls back to ASX v2 discovery.
+
+    Returns list of {date, headline, pdf_url, type, size_kb}.
+    """
+    # Try Markit first — gives direct PDF download URLs
+    markit_results = find_earnings_pdfs_markit(ticker)
+    if markit_results:
+        return markit_results
+
+    # Fall back to ASX v2 HTML scraping (PDFs need curl_cffi to download)
+    try:
+        from curl_cffi import requests as cffi
+        from bs4 import BeautifulSoup
+    except ImportError:
+        logger.warning("[pdf] curl_cffi not installed — ASX v2 PDF discovery unavailable")
+        return []
+
+    url = (
+        f"{ASX_V2_BASE}/announcements.do?by=asxCode"
+        f"&asxCode={ticker.upper()}&timeframe=D&period={period}"
+    )
+
+    try:
+        r = cffi.get(url, impersonate="chrome131", timeout=20)
+        if r.status_code != 200:
+            logger.warning(f"[pdf] ASX v2 returned {r.status_code} for {ticker}")
+            return []
+    except Exception as e:
+        logger.error(f"[pdf] ASX v2 fetch failed for {ticker}: {e}")
+        return []
+
+    soup = BeautifulSoup(r.text, "lxml")
+    table = soup.find("table")
+    if not table:
+        return []
+
+    import re
+
+    results = []
+    for row in table.find_all("tr")[1:]:
+        cells = row.find_all("td")
+        if len(cells) < 3:
+            continue
+
+        date_text = cells[0].get_text(strip=True)[:10]
+        headline_cell = cells[2]
+        headline = re.sub(r"\s+", " ", headline_cell.get_text(strip=True))
+
+        # Check if earnings-related
+        if not any(kw.lower() in headline.lower() for kw in EARNINGS_KEYWORDS):
+            continue
+
+        # Parse size — skip large PDFs (>5MB)
+        size_match = re.search(r"([\d.]+)\s*(KB|MB)", headline, re.IGNORECASE)
+        if size_match:
+            size_val = float(size_match.group(1))
+            size_unit = size_match.group(2).upper()
+            size_kb = size_val if size_unit == "KB" else size_val * 1024
+            if size_kb > 5120:  # Skip >5MB
+                continue
+        else:
+            size_kb = 0
+
+        # Get PDF link
+        link = headline_cell.find("a")
+        if not link:
+            continue
+        href = link.get("href", "")
+        if not href:
+            continue
+
+        pdf_url = f"https://www.asx.com.au{href}" if href.startswith("/") else href
+
+        # Determine filing type
+        headline_lower = headline.lower()
+        if "4d" in headline_lower:
+            filing_type = "4D"
+        elif "4e" in headline_lower:
+            filing_type = "4E"
+        else:
+            filing_type = "RESULTS"
+
+        results.append({
+            "date": date_text,
+            "headline": re.sub(r"\d+\s+pages?.*$", "", headline, flags=re.IGNORECASE).strip(),
+            "pdf_url": pdf_url,
+            "type": filing_type,
+            "size_kb": size_kb,
+        })
+
+    logger.info(f"[pdf] ASX v2: {ticker} has {len(results)} earnings PDFs in {period}")
+    return results
+
+
 class PDFExtractor:
     """Downloads ASX earnings PDFs and extracts structured financial data via Claude."""
 
     def __init__(self, api_key: Optional[str] = None) -> None:
         self.client = anthropic.AsyncAnthropic(api_key=api_key)
+
+    async def _download_pdf_cffi(self, url: str) -> bytes:
+        """Download a PDF using curl_cffi to bypass Cloudflare. Falls back to urllib."""
+        try:
+            from curl_cffi import requests as cffi
+
+            def _do():
+                r = cffi.get(url, impersonate="chrome131", timeout=30)
+                r.raise_for_status()
+                if r.content[:5] != b"%PDF-":
+                    raise ValueError(f"Response is not a PDF ({len(r.content)} bytes, starts with {r.content[:20]})")
+                return r.content
+
+            return await asyncio.get_event_loop().run_in_executor(None, _do)
+        except Exception as e:
+            logger.debug(f"[pdf] curl_cffi download failed, trying urllib: {e}")
+            return await _download_pdf(url)
 
     async def extract_from_url(self, pdf_url: str, ticker: str) -> dict:
         """Download a PDF and extract structured earnings data."""
@@ -334,6 +500,73 @@ class PDFExtractor:
         except Exception as e:
             logger.debug(f"[pdf] Web search failed for '{query}': {e}")
             return []
+
+    async def find_and_extract_v2(
+        self, ticker: str, max_pdfs: int = 2,
+    ) -> list[dict]:
+        """Find earnings PDFs via ASX v2, download, and extract with Haiku.
+
+        Cheaper than Sonnet — uses Haiku for extraction (~$0.005/PDF).
+        Returns list of extracted earnings records.
+        """
+        ticker = ticker.upper()
+        pdfs = find_earnings_pdfs_v2(ticker, period="M6")
+
+        if not pdfs:
+            logger.info(f"[pdf] No ASX v2 PDFs found for {ticker}")
+            return []
+
+        # Prefer small PDFs (ASX Announcement, not full Pillar 3 reports)
+        pdfs.sort(key=lambda p: p.get("size_kb", 9999))
+        pdfs = pdfs[:max_pdfs]
+
+        results = []
+        for pdf_info in pdfs:
+            logger.info(f"[pdf] {ticker}: extracting {pdf_info['headline']} ({pdf_info.get('size_kb', 0):.0f}KB)")
+            try:
+                pdf_bytes = await self._download_pdf_cffi(pdf_info["pdf_url"])
+                if len(pdf_bytes) > 10_000_000:
+                    pdf_bytes = await _truncate_pdf(pdf_bytes, max_pages=20)
+
+                pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("ascii")
+
+                message = await self.client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1024,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "document",
+                                "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+                            },
+                            {
+                                "type": "text",
+                                "text": f"Ticker: {ticker}\n\n{EXTRACTION_PROMPT}",
+                            },
+                        ],
+                    }],
+                    timeout=60.0,
+                )
+
+                raw = message.content[0].text.strip()
+                extracted = _parse_json_response(raw)
+                extracted["_pdf_url"] = pdf_info["pdf_url"]
+                extracted["_source"] = "asx_v2"
+                extracted["_filing_date"] = pdf_info.get("date", "")
+                results.append(extracted)
+
+                logger.info(
+                    f"[pdf] {ticker}: {extracted.get('period')} — "
+                    f"EPS={extracted.get('eps_basic_cents')}c, "
+                    f"NPAT={extracted.get('npat_aud_m')}M"
+                )
+            except Exception as e:
+                logger.error(f"[pdf] Extraction failed for {ticker}: {e}")
+
+            await asyncio.sleep(0.5)
+
+        return results
 
     async def find_and_extract(
         self, ticker: str, result_type: str = "both"
