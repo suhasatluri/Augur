@@ -205,6 +205,42 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_ticker ON feedback(ticker);
 
+-- ============================================================
+-- asic_short_interest: daily short position data from ASIC
+-- ============================================================
+CREATE TABLE IF NOT EXISTS asic_short_interest (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker          TEXT NOT NULL,
+    as_of_date      TEXT NOT NULL,
+    pct_shorted     FLOAT,
+    short_positions BIGINT,
+    total_in_issue  BIGINT,
+    signal          TEXT,
+    signal_score    FLOAT,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(ticker, as_of_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asic_short_ticker ON asic_short_interest(ticker);
+
+-- ============================================================
+-- director_transactions: on-market director trades from Market Index
+-- ============================================================
+CREATE TABLE IF NOT EXISTS director_transactions (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker      TEXT NOT NULL,
+    txn_date    TEXT,
+    director    TEXT,
+    txn_type    TEXT,
+    amount      BIGINT,
+    price       FLOAT,
+    value       FLOAT,
+    notes       TEXT,
+    scraped_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_dir_txn_ticker ON director_transactions(ticker);
+
 -- Migration: add seed_data column to existing simulations table
 DO $$
 BEGIN

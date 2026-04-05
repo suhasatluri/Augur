@@ -25,13 +25,15 @@ class StructuredDataFetcher:
 
         Tries pre-scraped DB data first (asx_scraper), falls back to live yfinance + stockanalysis.
         Enriches with consensus data from yfinance earnings_estimate.
+        Adds ASIC short interest and analyst target spread.
         """
         # Try pre-scraped data from asx_scraper tables
         db_data = await self.get_from_db(ticker)
         if db_data:
             logger.info(f"[structured] Using pre-scraped DB data for {ticker}")
-            # Enrich with consensus data
             db_data = await self._enrich_consensus(ticker, db_data)
+            db_data = await self._enrich_short_interest(ticker, db_data)
+            db_data = await self._enrich_director_signal(ticker, db_data)
             return db_data
 
         data: dict = {"ticker": ticker, "source_yfinance": {}, "source_stockanalysis": {}}
@@ -46,6 +48,8 @@ class StructuredDataFetcher:
                 "industry": info.get("industry"),
                 "currentPrice": info.get("currentPrice"),
                 "targetMeanPrice": info.get("targetMeanPrice"),
+                "targetHighPrice": info.get("targetHighPrice"),
+                "targetLowPrice": info.get("targetLowPrice"),
                 "recommendationMean": info.get("recommendationMean"),
                 "recommendationKey": info.get("recommendationKey"),
                 "earningsGrowth": info.get("earningsGrowth"),
@@ -57,6 +61,23 @@ class StructuredDataFetcher:
                 "dividendYield": info.get("dividendYield"),
                 "marketCap": info.get("marketCap"),
             }
+            # Analyst target spread — measures analyst disagreement
+            target_mean = info.get("targetMeanPrice", 0) or 0
+            target_high = info.get("targetHighPrice", 0) or 0
+            target_low = info.get("targetLowPrice", 0) or 0
+            if target_mean > 0:
+                spread = target_high - target_low
+                yf_fields["analyst_spread_pct"] = round((spread / target_mean) * 100, 2)
+            else:
+                yf_fields["analyst_spread_pct"] = 0.0
+
+            if yf_fields["analyst_spread_pct"] > 40:
+                yf_fields["analyst_consensus_quality"] = "HIGH_DISAGREEMENT"
+            elif yf_fields["analyst_spread_pct"] > 20:
+                yf_fields["analyst_consensus_quality"] = "MODERATE_DISAGREEMENT"
+            else:
+                yf_fields["analyst_consensus_quality"] = "CONSENSUS"
+
             # Calendar — next earnings date
             try:
                 cal = stock.calendar
@@ -94,6 +115,77 @@ class StructuredDataFetcher:
         # --- Source 3: consensus enrichment ---
         data = await self._enrich_consensus(ticker, data)
 
+        # --- Source 4: ASIC short interest ---
+        data = await self._enrich_short_interest(ticker, data)
+
+        # --- Source 5: Director transactions from Neon ---
+        data = await self._enrich_director_signal(ticker, data)
+
+        return data
+
+    async def _enrich_short_interest(self, ticker: str, data: dict) -> dict:
+        """Add ASIC short interest data if available."""
+        try:
+            from asx_scraper.sources.asic_short_interest import download_asic_data, get_short_interest
+
+            def _fetch():
+                asic_data = download_asic_data()
+                return get_short_interest(ticker, asic_data)
+
+            result = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _fetch),
+                timeout=15.0,
+            )
+            if result:
+                data["source_asic_short"] = result
+                logger.info(
+                    f"[structured] ASIC short for {ticker}: "
+                    f"{result['pct_shorted']}% ({result['signal']})"
+                )
+        except Exception as e:
+            logger.debug(f"[structured] ASIC short interest failed for {ticker}: {e}")
+        return data
+
+    async def _enrich_director_signal(self, ticker: str, data: dict) -> dict:
+        """Look up director transaction signal from Neon if previously scraped."""
+        try:
+            from db.schema import get_pool
+
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """SELECT txn_type, value FROM director_transactions
+                       WHERE ticker = $1 ORDER BY scraped_at DESC LIMIT 50""",
+                    ticker.upper(),
+                )
+                if rows:
+                    buys = [r for r in rows if r["txn_type"] == "Buy"]
+                    sells = [r for r in rows if r["txn_type"] == "Sell"]
+                    buy_val = sum(float(r["value"] or 0) for r in buys)
+                    sell_val = sum(float(r["value"] or 0) for r in sells)
+                    net = buy_val - sell_val
+
+                    if net > 1_000_000:
+                        sig, score = "STRONG_BUY", 0.75
+                    elif net > 100_000:
+                        sig, score = "BUY", 0.65
+                    elif net > -100_000:
+                        sig, score = "NEUTRAL", 0.50
+                    elif net > -1_000_000:
+                        sig, score = "SELL", 0.35
+                    else:
+                        sig, score = "STRONG_SELL", 0.20
+
+                    data["source_director"] = {
+                        "net_buy_value": round(net, 2),
+                        "buy_count": len(buys),
+                        "sell_count": len(sells),
+                        "signal": sig,
+                        "signal_score": score,
+                    }
+                    logger.info(f"[structured] Director signal for {ticker}: {sig} (net=${net:,.0f})")
+        except Exception as e:
+            logger.debug(f"[structured] Director signal lookup failed for {ticker}: {e}")
         return data
 
     async def _fetch_beat_miss(self, ticker: str) -> dict:
@@ -290,28 +382,30 @@ class StructuredDataFetcher:
     def compute_ticker_bias_score(self, data: dict) -> tuple[float, dict]:
         """Compute ticker_bias_score from structured data. Returns (score, breakdown).
 
-        5 components:
-        1. Recommendation (28%) — analyst buy/hold/sell consensus
-        2. Upside (22%) — target price vs current price
-        3. Growth (20%) — earnings growth rate
-        4. Beat rate (20%) — historical beat/miss from price proxy
-        5. Intel (10%) — quarterly outlook from company intel harvester
+        6 components:
+        1. Recommendation (25%) — analyst buy/hold/sell consensus
+        2. Upside (20%) — target price vs current price
+        3. Growth (15%) — earnings growth rate
+        4. Beat rate (15%) — historical beat/miss from price proxy
+        5. Short interest (15%) — ASIC short position signal (inverse)
+        6. Director signal (10%) — net director buy/sell from Market Index
         """
         yf_data = data.get("source_yfinance", {})
         sa_data = data.get("source_stockanalysis", {})
-        intel_data = data.get("source_company_intel", {})
+        short_data = data.get("source_asic_short", {})
+        director_data = data.get("source_director", {})
 
         breakdown = {}
 
-        # 1. Recommendation component (28%)
+        # 1. Recommendation component (25%)
         rec_mean = yf_data.get("recommendationMean")
         if rec_mean is not None and 1.0 <= rec_mean <= 5.0:
             rec_component = (5.0 - rec_mean) / 4.0
         else:
             rec_component = 0.5
-        breakdown["rec_component"] = {"value": rec_component, "raw": rec_mean, "weight": 0.28}
+        breakdown["rec_component"] = {"value": rec_component, "raw": rec_mean, "weight": 0.25}
 
-        # 2. Upside component (22%)
+        # 2. Upside component (20%)
         target = yf_data.get("targetMeanPrice")
         current = yf_data.get("currentPrice")
         if target is not None and current is not None and current > 0:
@@ -320,19 +414,17 @@ class StructuredDataFetcher:
         else:
             upside_component = 0.5
             upside = None
-        breakdown["upside_component"] = {"value": upside_component, "raw_upside": upside, "weight": 0.22}
+        breakdown["upside_component"] = {"value": upside_component, "raw_upside": upside, "weight": 0.20}
 
-        # 3. Growth component (20%)
+        # 3. Growth component (15%)
         eg = yf_data.get("earningsGrowth")
         if eg is not None:
             growth_component = _clamp(0.5 + eg / 2)
         else:
             growth_component = 0.5
-        breakdown["growth_component"] = {"value": growth_component, "raw": eg, "weight": 0.20}
+        breakdown["growth_component"] = {"value": growth_component, "raw": eg, "weight": 0.15}
 
-        # 4. Beat rate component (20%)
-        # Priority: consensus data > price proxy > neutral fallback
-        # Banks exhibit sell-the-news effect — price proxy is unreliable for them
+        # 4. Beat rate component (15%)
         _BANK_TICKERS = {"CBA", "WBC", "ANZ", "NAB", "MQG"}
         ticker = data.get("ticker", "").upper()
         beat_rate = sa_data.get("beat_rate")
@@ -340,11 +432,9 @@ class StructuredDataFetcher:
         has_consensus = "consensus" in beat_rate_source
 
         if has_consensus and beat_rate is not None:
-            # Real consensus-derived beat_rate — use as-is for all tickers
             beat_component = _clamp(beat_rate)
             beat_rate_raw = beat_rate
         elif ticker in _BANK_TICKERS and not has_consensus:
-            # Bank with only price proxy — unreliable, fallback to neutral
             logger.warning(
                 f"[structured] Bank price proxy unreliable for {ticker} "
                 f"(sell-the-news effect) — beat_rate fallback to 0.50"
@@ -357,25 +447,34 @@ class StructuredDataFetcher:
         else:
             beat_component = 0.5
             beat_rate_raw = beat_rate
-        breakdown["beat_rate_component"] = {"value": beat_component, "raw": beat_rate_raw, "weight": 0.20}
+        breakdown["beat_rate_component"] = {"value": beat_component, "raw": beat_rate_raw, "weight": 0.15}
 
-        # 5. Intel component (10%) — company quarterly outlook
-        intel_outlook = intel_data.get("overall_outlook")
-        if intel_outlook == "positive":
-            intel_component = 0.70
-        elif intel_outlook == "negative":
-            intel_component = 0.30
-        else:
-            intel_component = 0.50
-        breakdown["intel_component"] = {"value": intel_component, "raw": intel_outlook, "weight": 0.10}
+        # 5. Short interest component (15%) — ASIC data, inverse signal
+        short_score = short_data.get("signal_score", 0.5) if short_data else 0.5
+        breakdown["short_interest_component"] = {
+            "value": short_score,
+            "raw_pct": short_data.get("pct_shorted") if short_data else None,
+            "signal": short_data.get("signal") if short_data else "N/A",
+            "weight": 0.15,
+        }
+
+        # 6. Director signal component (10%)
+        director_score = director_data.get("signal_score", 0.5) if director_data else 0.5
+        breakdown["director_component"] = {
+            "value": director_score,
+            "signal": director_data.get("signal") if director_data else "N/A",
+            "raw_net": director_data.get("net_buy_value") if director_data else None,
+            "weight": 0.10,
+        }
 
         # Final score
         score = (
-            rec_component * 0.28
-            + upside_component * 0.22
-            + growth_component * 0.20
-            + beat_component * 0.20
-            + intel_component * 0.10
+            rec_component * 0.25
+            + upside_component * 0.20
+            + growth_component * 0.15
+            + beat_component * 0.15
+            + short_score * 0.15
+            + director_score * 0.10
         )
         score = _clamp(score, 0.20, 0.80)
 

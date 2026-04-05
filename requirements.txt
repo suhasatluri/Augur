@@ -6,6 +6,8 @@ pydantic
 python-dotenv
 yfinance
 lxml
+beautifulsoup4
+httpx
 pypdf
 python-logging-loki
 prometheus-client
