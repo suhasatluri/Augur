@@ -208,6 +208,28 @@ export default function SimulationPage() {
         </>
       )}
 
+      {/* Feedback */}
+      {isDone && (
+        <div className="flex items-center justify-between flex-wrap gap-3 border border-gold/20 bg-gold/[.04] rounded p-4">
+          <div>
+            <div className="font-mono text-[10px] tracking-widest uppercase text-gold mb-1">
+              Was this useful?
+            </div>
+            <div className="font-mono text-[11px] text-muted font-light">
+              Help us improve Augur — takes 60 seconds
+            </div>
+          </div>
+          <a
+            href="https://docs.google.com/forms/d/e/1FAIpQLSdnN4mgEqMTf14bXHb0qQ-TtLzR7xejHaTNZ1gaQlAeT1w_eA/viewform"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-[10px] tracking-widest uppercase text-gold border border-gold/30 px-4 py-2 hover:bg-gold/10 transition whitespace-nowrap"
+          >
+            Give feedback →
+          </a>
+        </div>
+      )}
+
       {/* Back link */}
       <div className="text-center">
         <a
