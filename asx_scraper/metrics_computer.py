@@ -20,13 +20,35 @@ class MetricsComputer:
         try:
             pool = await get_pool()
             async with pool.acquire() as conn:
+                # Get MI NPAT for sanity checking PDF-extracted values
+                mi_npat = await conn.fetchval(
+                    "SELECT npat_m FROM asx_metrics WHERE ticker = $1", ticker
+                )
+
                 # Fetch all earnings rows, most recent first
                 rows = await conn.fetch("""
-                    SELECT beat_miss, surprise_pct, data_source, data_confidence
+                    SELECT id, beat_miss, surprise_pct, data_source, data_confidence, npat_aud_m
                     FROM asx_earnings
                     WHERE ticker = $1
                     ORDER BY reporting_date DESC
                 """, ticker)
+
+                # Sanity check: flag rows where NPAT is >3x off from Market Index
+                if mi_npat and float(mi_npat) > 0:
+                    for r in rows:
+                        npat = r["npat_aud_m"]
+                        if npat is not None and abs(float(npat) / float(mi_npat)) < 0.1:
+                            await conn.execute(
+                                "UPDATE asx_earnings SET data_confidence = 'LOW_SUSPECT' WHERE id = $1",
+                                r["id"],
+                            )
+                            logger.warning(
+                                f"[metrics] {ticker}: flagged suspect NPAT=${npat}M "
+                                f"(MI reference=${float(mi_npat):.0f}M)"
+                            )
+
+                # Exclude suspect rows from beat rate computation
+                rows = [r for r in rows if r["data_confidence"] != "LOW_SUSPECT"]
 
                 if not rows:
                     logger.info(f"[metrics] No earnings data for {ticker}")

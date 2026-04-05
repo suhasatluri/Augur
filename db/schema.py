@@ -255,6 +255,10 @@ END $$;
 -- Migration: add market signal columns to asx_metrics
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asx_earnings_ticker_period_unique') THEN
+        ALTER TABLE asx_earnings ADD CONSTRAINT asx_earnings_ticker_period_unique UNIQUE (ticker, period);
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'short_pct') THEN
         ALTER TABLE asx_metrics ADD COLUMN short_pct FLOAT;
     END IF;

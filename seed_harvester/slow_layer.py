@@ -20,12 +20,40 @@ logger = logging.getLogger(__name__)
 
 SLOW_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
+# Tickers that report in non-AUD currency
+REPORTING_CURRENCY: dict[str, str] = {
+    "BHP": "USD", "RIO": "USD", "WDS": "USD", "STO": "USD",
+    "NCM": "USD", "NEM": "USD", "WPL": "USD",
+    "XRO": "NZD", "FBU": "NZD", "SKC": "NZD",
+}
+
+
+def _infer_period_type(reporting_date: str) -> str:
+    """Infer H1 vs FY from reporting date month (typical ASX calendar)."""
+    try:
+        dt = datetime.strptime(reporting_date[:10], "%Y-%m-%d")
+        if dt.month in (2, 3):
+            return "H1 (Half-Year)"
+        elif dt.month in (8, 9):
+            return "FY (Full-Year)"
+        elif dt.month in (11, 12):
+            return "H1 (Half-Year)"
+        elif dt.month in (5, 6):
+            return "FY (Full-Year)"
+    except Exception:
+        pass
+    return "Unknown"
+
+
 SLOW_LAYER_PROMPT = """You are an ASX equity research analyst. Analyse {ticker} ({company_name}) and produce structured earnings intelligence seeds.
 
 Today's date: {current_date}
 Next expected earnings report: {reporting_period}
+Expected result type: {period_type}
+Reporting currency: {currency}
 Sector: {sector} / {industry}
-ASX reporting convention: Australian companies report Half-Year (H1) and Full-Year (FY) results. Currency is AUD. Key filings: Appendix 4D (half-year), Appendix 4E (full-year), Appendix 3B (capital changes).
+ASX reporting convention: Australian companies report Half-Year (H1) and Full-Year (FY) results. Key filings: Appendix 4D (half-year), Appendix 4E (full-year).
+IMPORTANT: {ticker} reports in {currency}. All EPS and NPAT figures must be in {currency}. Do not mix currencies.
 
 === VERIFIED FINANCIAL DATA (from yfinance — treat as factual) ===
 {structured_data_block}
@@ -197,6 +225,8 @@ async def harvest_slow(
 
     # --- Step 2: Build prompt with structured data ---
     current_date = datetime.utcnow().strftime("%Y-%m-%d")
+    currency = REPORTING_CURRENCY.get(ticker, "AUD")
+    period_type = _infer_period_type(reporting_period)
     structured_block = _build_structured_data_block(yf_data, extra_data=structured_data)
 
     prompt = SLOW_LAYER_PROMPT.format(
@@ -204,6 +234,8 @@ async def harvest_slow(
         company_name=company_name,
         current_date=current_date,
         reporting_period=reporting_period,
+        period_type=period_type,
+        currency=currency,
         sector=sector,
         industry=industry,
         structured_data_block=structured_block,
