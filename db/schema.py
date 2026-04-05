@@ -187,6 +187,24 @@ CREATE TABLE IF NOT EXISTS asx_company_intel (
 CREATE INDEX IF NOT EXISTS idx_asx_metrics_ticker ON asx_metrics(ticker);
 CREATE INDEX IF NOT EXISTS idx_company_intel_ticker ON asx_company_intel(ticker);
 
+-- ============================================================
+-- feedback: user feedback from frontend
+-- ============================================================
+CREATE TABLE IF NOT EXISTS feedback (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    simulation_id   TEXT,
+    ticker          TEXT,
+    verdict         TEXT,
+    rating          TEXT NOT NULL,
+    comment         TEXT,
+    email           TEXT,
+    page            TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_ticker ON feedback(ticker);
+
 -- Migration: add seed_data column to existing simulations table
 DO $$
 BEGIN

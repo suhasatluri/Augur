@@ -41,9 +41,14 @@ export default function RootLayout({
                 ASX Earnings Predictor
               </span>
             </a>
-            <a href="/about" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
-              How it works
-            </a>
+            <div className="flex items-center gap-5">
+              <a href="/about" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
+                How it works
+              </a>
+              <a href="/#feedback" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
+                Feedback
+              </a>
+            </div>
           </header>
           <main className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
             {children}

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import TickerInput from "@/components/TickerInput";
 import VerdictBadge from "@/components/VerdictBadge";
+import FeedbackForm from "@/components/FeedbackForm";
 import { startSimulation, getActivity, ActivityItem } from "@/lib/api";
 
 const ACTIVITY_POLL = 60000; // 60s
@@ -167,16 +168,8 @@ export default function Home() {
       </div>
 
       {/* Feedback */}
-      <div className="text-center pt-6 pb-2 font-mono text-[10px] text-muted tracking-wide">
-        Built something? Found a bug?{" "}
-        <a
-          href="https://docs.google.com/forms/d/e/1FAIpQLSdnN4mgEqMTf14bXHb0qQ-TtLzR7xejHaTNZ1gaQlAeT1w_eA/viewform"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-gold hover:underline"
-        >
-          Tell us →
-        </a>
+      <div id="feedback" className="max-w-xl mx-auto pt-10">
+        <FeedbackForm page="homepage" />
       </div>
     </div>
   );

@@ -454,6 +454,44 @@ async def metrics(request: Request):
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+class FeedbackRequest(BaseModel):
+    rating: str
+    comment: Optional[str] = None
+    email: Optional[str] = None
+    simulation_id: Optional[str] = None
+    ticker: Optional[str] = None
+    verdict: Optional[str] = None
+    page: Optional[str] = "results"
+
+
+@app.post("/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    """Accept user feedback from the frontend. No auth required."""
+    if req.rating not in ("positive", "negative", "neutral"):
+        raise HTTPException(status_code=400, detail="Invalid rating value")
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """INSERT INTO feedback (simulation_id, ticker, verdict, rating, comment, email, page)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                req.simulation_id,
+                req.ticker,
+                req.verdict,
+                req.rating,
+                req.comment,
+                req.email,
+                req.page,
+            )
+    except Exception as e:
+        logger.error(f"[api] Failed to store feedback: {e}")
+        raise HTTPException(status_code=500, detail="Failed to store feedback")
+
+    logger.info("Feedback received", extra={"ticker": req.ticker, "rating": req.rating, "page": req.page})
+    return {"status": "ok"}
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     """Health check for Railway. Always returns 200 — even without DB."""
