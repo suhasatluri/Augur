@@ -4,6 +4,7 @@ uvicorn
 asyncpg
 pydantic
 python-dotenv
+sentry-sdk[fastapi]>=2.0.0
 yfinance
 lxml
 beautifulsoup4
@@ -12,10 +13,6 @@ curl_cffi>=0.6.2
 playwright
 playwright-stealth
 pypdf
-python-logging-loki
-prometheus-client
-opentelemetry-sdk
-opentelemetry-exporter-otlp-proto-http
 pytest
 pytest-asyncio
 pytest-mock

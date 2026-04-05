@@ -11,20 +11,34 @@ from collections import defaultdict
 from datetime import date, datetime
 from typing import Optional
 
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from monitoring.grafana import (
-    setup_loki_logging,
-    api_requests_total,
-    generate_latest,
-    CONTENT_TYPE_LATEST,
-)
-
 load_dotenv()
+
+# Sentry error tracking
+_sentry_dsn = os.getenv("SENTRY_DSN_BACKEND")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[
+            FastApiIntegration(transaction_style="url"),
+            AsyncioIntegration(),
+            LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
+        ],
+        traces_sample_rate=0.1,
+        release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown")[:8],
+        environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
+        send_default_pii=False,
+    )
 
 from asx200 import is_valid_asx_ticker
 from db.schema import get_pool, ensure_schema
@@ -53,16 +67,6 @@ app.add_middleware(
     allow_headers=["X-API-Key", "Content-Type"],
 )
 
-
-@app.middleware("http")
-async def track_requests(request: Request, call_next):
-    response = await call_next(request)
-    api_requests_total.labels(
-        endpoint=request.url.path,
-        method=request.method,
-        status=str(response.status_code),
-    ).inc()
-    return response
 
 # ---------------------------------------------------------------------------
 # In-memory state (V1 — Redis in V2)
@@ -240,8 +244,7 @@ async def _cleanup_stale_simulations() -> None:
 
 @app.on_event("startup")
 async def startup() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    setup_loki_logging()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
     _load_api_keys()
     await _cleanup_stale_simulations()
     logger.info("[api] App started — schema will be ensured on first DB request")
@@ -432,26 +435,6 @@ async def activity(period: str = "today"):
         ))
 
     return items
-
-
-@app.get("/metrics")
-async def metrics(request: Request):
-    """Prometheus metrics endpoint for Grafana scraping. Requires bearer token."""
-    auth = request.headers.get("Authorization", "")
-    api_key_header = request.headers.get("X-Metrics-Token", "")
-
-    expected_token = os.getenv("METRICS_SCRAPE_TOKEN")
-
-    if not expected_token:
-        raise HTTPException(status_code=403, detail="Metrics endpoint not configured")
-
-    bearer = auth.replace("Bearer ", "").strip()
-    provided = bearer or api_key_header.strip()
-
-    if provided != expected_token:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 class FeedbackRequest(BaseModel):

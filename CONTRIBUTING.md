@@ -20,7 +20,7 @@ POST /simulate → augur_api.py → pipeline.py →
 | Database | Neon PostgreSQL |
 | Frontend | Next.js 14 on Vercel |
 | Storage | Cloudflare R2 (seed cache) |
-| Monitoring | Grafana Cloud (Loki logs, Prometheus metrics, Faro RUM) |
+| Monitoring | Sentry (error tracking + performance) |
 | LLM | Claude API (Sonnet for agents, Haiku for summaries) |
 | Data | yfinance + Perplexity Sonar + ASX Appendix 4D/4E PDFs |
 
@@ -53,15 +53,16 @@ augur/
 │   ├── price_scraper.py            # yfinance price reactions on earnings dates
 │   ├── metrics_computer.py         # Beat rate, credibility scores
 │   └── orchestrator.py             # Full scrape pipeline per ticker
-├── monitoring/
-│   └── grafana.py                  # Loki logging, Prometheus metrics, tracking decorator
+├── negotiation_runner/
+│   ├── runner.py                   # 3-round debate engine
+│   └── moderator.py                # Structural moderator between rounds (Haiku)
 ├── db/
 │   ├── schema.py                   # Neon schema (11 tables, 8 indexes)
 │   └── retention.py                # Retention policy (7d failed, 24h batch)
 ├── frontend/                       # Next.js 14 App Router
 │   ├── src/app/                    # Pages (/, /about, /simulation/[jobId])
-│   ├── src/lib/grafana.ts          # Faro RUM + simulation event tracking
-│   └── src/components/GrafanaInit.tsx  # Faro init (client component)
+│   ├── sentry.client.config.ts     # Sentry frontend error tracking
+│   └── sentry.server.config.ts     # Sentry server-side error tracking
 ├── docs/
 │   ├── Augur_Explainer.html        # GitHub Pages explainer page
 │   └── Augur__The_Power_of_a_Debate.mp4  # Explainer video (37MB)
@@ -121,12 +122,9 @@ npm run dev
 | `STORAGE_ENDPOINT` | No | Cloudflare R2 endpoint (seed cache falls back to Neon) |
 | `STORAGE_ACCESS_KEY` | No | R2 access key |
 | `STORAGE_SECRET_KEY` | No | R2 secret key |
-| `GRAFANA_LOKI_URL` | No | Grafana Loki log endpoint |
-| `GRAFANA_LOKI_USER` | No | Grafana Loki user ID |
-| `GRAFANA_API_KEY` | No | Grafana Cloud API key |
-| `ENVIRONMENT` | No | Deployment environment (production/staging) |
+| `SENTRY_DSN_BACKEND` | No | Sentry error tracking DSN |
 
-`STORAGE_*` and `GRAFANA_*` vars are optional for local development. Without R2, seed caching uses the Neon `seed_data` JSONB column. Without Grafana, logging falls back to console.
+`STORAGE_*` and `SENTRY_*` vars are optional for local development. Without R2, seed caching uses the Neon `seed_data` JSONB column. Without Sentry, errors log to console only.
 
 ## Running tests
 

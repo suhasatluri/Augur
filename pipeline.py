@@ -16,6 +16,11 @@ from negotiation_runner.runner import NegotiationRunner
 from prediction_synthesiser.synthesiser import PredictionSynthesiser
 from prediction_synthesiser.models import PredictionReport
 
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
 PIPELINE_TIMEOUT = 300  # 5 minutes max per simulation
@@ -155,6 +160,10 @@ async def _run_pipeline_inner(
 ) -> PredictionReport:
     start = time.monotonic()
     pool = await get_pool()
+
+    if sentry_sdk:
+        sentry_sdk.set_tag("ticker", ticker)
+        sentry_sdk.set_tag("simulation_id", simulation_id)
 
     logger.info(f"[pipeline] Starting full pipeline for {ticker} ({simulation_id})")
 
