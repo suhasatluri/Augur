@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 
 from monitoring.grafana import (
     setup_loki_logging,
-    start_metrics_push,
     api_requests_total,
     generate_latest,
     CONTENT_TYPE_LATEST,
@@ -243,7 +242,6 @@ async def _cleanup_stale_simulations() -> None:
 async def startup() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     setup_loki_logging()
-    start_metrics_push()
     _load_api_keys()
     await _cleanup_stale_simulations()
     logger.info("[api] App started — schema will be ensured on first DB request")
