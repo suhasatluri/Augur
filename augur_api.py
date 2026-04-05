@@ -435,8 +435,22 @@ async def activity(period: str = "today"):
 
 
 @app.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint for Grafana scraping."""
+async def metrics(request: Request):
+    """Prometheus metrics endpoint for Grafana scraping. Requires bearer token."""
+    auth = request.headers.get("Authorization", "")
+    api_key_header = request.headers.get("X-Metrics-Token", "")
+
+    expected_token = os.getenv("METRICS_SCRAPE_TOKEN")
+
+    if not expected_token:
+        raise HTTPException(status_code=403, detail="Metrics endpoint not configured")
+
+    bearer = auth.replace("Bearer ", "").strip()
+    provided = bearer or api_key_header.strip()
+
+    if provided != expected_token:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
