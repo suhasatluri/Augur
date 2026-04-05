@@ -54,7 +54,7 @@ export default function Home() {
           Predict Earnings Surprises
         </h1>
         <p className="text-muted text-sm max-w-lg mx-auto">
-          50 AI analyst agents debate ASX earnings outcomes through 5 rounds of
+          50 AI analyst agents debate ASX earnings outcomes through 3 rounds of
           structured negotiation. Swarm intelligence, not single-model
           prediction.
         </p>
