@@ -13,7 +13,7 @@ const TOTAL_ESTIMATE = 150; // seconds
 const STAGES = [
   { label: "Harvesting seed data", duration: 30 },
   { label: "Forging 50 analyst agents", duration: 45 },
-  { label: "Running debate rounds 1–5", duration: 130 },
+  { label: "Running debate rounds 1–3", duration: 130 },
   { label: "Synthesising prediction", duration: 5 },
 ];
 
