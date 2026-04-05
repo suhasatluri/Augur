@@ -9,6 +9,7 @@ BSL 1.1 licensed. GitHub: github.com/suhasatluri/Augur
 - Frontend: Next.js 14 on Vercel
 - Storage: Cloudflare R2 (seed cache)
 - Queue: Upstash Redis (job queue)
+- Monitoring: Grafana Cloud (Loki logs, Prometheus metrics at /metrics, Faro RUM in frontend)
 - LLM: Claude API (Sonnet for agents + PDF extraction, Haiku for summaries)
 - Data: ASX Markit API + PDFExtractor + yfinance (consensus EPS + supplementary)
 - Edge: Cloudflare (always stays regardless of cloud)
@@ -40,11 +41,18 @@ prediction_synthesiser → results in Neon
 - persona_forge/forge.py — 50 agent creation (5 archetypes forged in parallel via asyncio.gather)
 - negotiation_runner/runner.py — 3-round debate
 - prediction_synthesiser/synthesiser.py — final report
+- monitoring/grafana.py — Grafana Cloud: Loki logging, Prometheus metrics, simulation tracking decorator
 - db/schema.py — Neon PostgreSQL schema (11 tables, 8 indexes, CASCADE deletes, seed_data JSONB on simulations)
 - db/retention.py — retention policy (7d failed, 24h batch, reasoning compression)
 - conftest.py — pytest root path setup
 - tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
 - frontend/src/app/ — Next.js App Router pages
+- frontend/src/lib/grafana.ts — Grafana Faro RUM + simulation event tracking
+- frontend/src/components/GrafanaInit.tsx — Faro initialisation (client component in root layout)
+- frontend/public/about.html — Full explainer page (How It Works) with embedded video
+- docs/Augur_Explainer.html — GitHub Pages version of explainer (source of truth)
+- docs/Augur__The_Power_of_a_Debate.mp4 — Explainer video (37MB, served from GitHub Pages CDN)
+- CONTRIBUTING.md — Contributor guide: setup, tests, PR process, contribution areas
 
 ## Critical Rules
 - NEVER commit .env files
@@ -63,7 +71,16 @@ STORAGE_ENDPOINT — Cloudflare R2 endpoint
 STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
 PERPLEXITY_API_KEY — Perplexity Sonar (real-time financial news in fast layer, ~$0.005/query)
+GRAFANA_LOKI_URL — Grafana Loki log endpoint
+GRAFANA_LOKI_USER — Grafana Loki user ID
+GRAFANA_API_KEY — Grafana Cloud API key
+ENVIRONMENT — deployment environment (production/staging)
 FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
+
+### Frontend Environment Variables (Vercel)
+NEXT_PUBLIC_GRAFANA_FARO_URL — Grafana Faro collector endpoint
+NEXT_PUBLIC_GRAFANA_APP_NAME — Faro app name (augur-frontend)
+NEXT_PUBLIC_API_URL — Backend API URL
 
 ## Key Decisions Made
 - Built proprietary ASX data pipeline — PDFExtractor reads official Appendix 4D/4E documents directly. CompanyIntelHarvester fetches quarterly updates and presentations from company IR pages. No third-party data dependency for historical results.
@@ -123,13 +140,29 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - ANTHROPIC_API_KEY
 - DATABASE_URL
 
+## Observability
+- Grafana Cloud observability live in production (replaced Sentry plan)
+- Backend: Loki structured logging + Prometheus metrics at /metrics
+- Metrics: augur_simulations_total, augur_simulation_duration_seconds, augur_simulation_errors_total, augur_seed_quality_score, augur_active_simulations, augur_api_requests_total
+- Frontend: Grafana Faro RUM + Web Vitals + console capture + tracing
+- Frontend events: simulation_started, simulation_complete, simulation_error
+- track_simulation() decorator in monitoring/grafana.py — not yet wired into pipeline.py
+
+## Pages
+- / — Homepage (simulation form, community activity, video teaser)
+- /about — Full explainer page (How It Works, embedded video from GitHub Pages CDN)
+- /simulation/[jobId] — Simulation progress + results
+- Explainer video: https://suhasatluri.github.io/Augur/Augur__The_Power_of_a_Debate.mp4
+- GitHub Pages explainer: https://suhasatluri.github.io/Augur/Augur_Explainer.html
+
 ## V2 Priorities
-1. Sentry error tracking — FastAPI + Next.js (pre-launch, non-negotiable)
+1. ~~Sentry error tracking~~ — DONE (replaced with Grafana Cloud: Loki + Prometheus + Faro)
 2. Moderator agent — moderator_agent.py (Phase 4, +$0.10-0.15/sim)
 3. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
 4. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
-5. Outcome tracking (outcomes table exists, needs ingestion)
-6. User accounts + simulation history
-7. Bootstrap asx_scraper across full ASX 100
-8. Schedule weekly asx_scraper refresh via GitHub Actions cron
-9. Email alerts for upcoming earnings
+5. Wire track_simulation() decorator into pipeline.py for per-simulation metrics
+6. Outcome tracking (outcomes table exists, needs ingestion)
+7. User accounts + simulation history
+8. Bootstrap asx_scraper across full ASX 100
+9. Schedule weekly asx_scraper refresh via GitHub Actions cron
+10. Email alerts for upcoming earnings
