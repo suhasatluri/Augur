@@ -72,8 +72,9 @@ STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
 PERPLEXITY_API_KEY — Perplexity Sonar (real-time financial news in fast layer, ~$0.005/query)
 GRAFANA_LOKI_URL — Grafana Loki log endpoint
-GRAFANA_LOKI_USER — Grafana Loki user ID
-GRAFANA_API_KEY — Grafana Cloud API key
+GRAFANA_LOKI_USER — Grafana Loki user ID (1541545)
+GRAFANA_API_KEY — Grafana Cloud API token
+METRICS_SCRAPE_TOKEN — secures /metrics endpoint (bearer token)
 ENVIRONMENT — deployment environment (production/staging)
 FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 
@@ -141,12 +142,22 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - DATABASE_URL
 
 ## Observability
-- Grafana Cloud observability live in production (replaced Sentry plan)
-- Backend: Loki structured logging + Prometheus metrics at /metrics
-- Metrics: augur_simulations_total, augur_simulation_duration_seconds, augur_simulation_errors_total, augur_seed_quality_score, augur_active_simulations, augur_api_requests_total
-- Frontend: Grafana Faro RUM + Web Vitals + console capture + tracing
-- Frontend events: simulation_started, simulation_complete, simulation_error
-- track_simulation() decorator in monitoring/grafana.py — not yet wired into pipeline.py
+- Grafana Cloud (suhasatluri.grafana.net)
+- Loki structured logging — live, working
+  Logs ship from FastAPI to Grafana Loki
+  Query: {application="augur"}
+- Prometheus metrics at /metrics endpoint
+  Secured with METRICS_SCRAPE_TOKEN (bearer token required)
+  Remote push deferred — use /metrics endpoint directly when needed
+  Metrics: augur_simulations_total, augur_simulation_duration_seconds, augur_simulation_errors_total, augur_seed_quality_score, augur_active_simulations, augur_api_requests_total
+- Faro RUM — Next.js frontend
+  Collector: faro-collector-prod-au-southeast-1
+  Tracks: errors, Web Vitals, custom events (simulation_started, simulation_complete, simulation_error)
+- Key monitoring files:
+  monitoring/grafana.py — Loki + Prometheus metrics + track_simulation() decorator
+  frontend/src/lib/grafana.ts — Faro SDK init + event helpers
+  frontend/src/components/GrafanaInit.tsx — Faro init client component
+- track_simulation() decorator not yet wired into pipeline.py
 
 ## Pages
 - / — Homepage (simulation form, community activity, video teaser)
