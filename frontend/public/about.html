@@ -98,6 +98,18 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;ove
 .round-stats{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim)}
 .round-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);margin-top:4px;line-height:1.5}
 
+/* ── MODERATOR SECTION ── */
+.mod-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:40px}
+.mod-card{border:1px solid var(--border);background:var(--card);padding:24px 20px}
+.mod-card-icon{font-size:20px;margin-bottom:10px}
+.mod-card-title{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:var(--gold);letter-spacing:.06em;margin-bottom:8px}
+.mod-card-body{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);line-height:1.7;font-weight:300}
+.moderator-callout{display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-left:2px solid var(--gold);background:rgba(201,168,76,.04);margin:8px 0}
+.mod-icon{font-size:16px;flex-shrink:0;margin-top:2px}
+.mod-label{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
+.mod-text{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);line-height:1.6;font-weight:300}
+@media(max-width:600px){.mod-grid{grid-template-columns:1fr}}
+
 /* ── OUTPUT SECTION ── */
 .output-mock{border:1px solid var(--gold-line);background:var(--card);overflow:hidden;margin-top:40px;opacity:0;transform:translateY(24px);transition:all .7s ease}
 .output-mock.vis{opacity:1;transform:translateY(0)}
@@ -287,6 +299,37 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
   </div>
 </section>
 
+<!-- ═══ MODERATOR ═══ -->
+<section class="section" id="moderator">
+  <div class="section-inner">
+    <div class="section-eyebrow">The Moderator</div>
+    <h2 class="section-title">Not just a referee.<br><em>An analyst.</em></h2>
+    <p class="section-desc">Between every round, a neutral moderator reads all 50 agent responses and structures the next debate. It doesn't take sides — but it makes sure weak arguments get challenged and strong minority views get heard.</p>
+    <div class="mod-grid">
+      <div class="mod-card">
+        <div class="mod-card-icon">&#128203;</div>
+        <div class="mod-card-title">Argument Extraction</div>
+        <div class="mod-card-body">Finds the 3 strongest bull and bear cases from all 50 agent reasoning strings. Must be specific and evidence-grounded — generic arguments don't qualify.</div>
+      </div>
+      <div class="mod-card">
+        <div class="mod-card-icon">&#9889;</div>
+        <div class="mod-card-title">Outlier Challenge</div>
+        <div class="mod-card-body">Identifies agents holding extreme views with low conviction. Sends them a targeted challenge: what specific evidence would move you toward the group?</div>
+      </div>
+      <div class="mod-card">
+        <div class="mod-card-icon">&#127919;</div>
+        <div class="mod-card-title">Dissent Protection</div>
+        <div class="mod-card-body">Flags analysts holding an unusual view with high conviction. Ensures all 50 agents explicitly consider the minority case before updating.</div>
+      </div>
+      <div class="mod-card">
+        <div class="mod-card-icon">&#128202;</div>
+        <div class="mod-card-title">Swing Factor Tracking</div>
+        <div class="mod-card-body">Counts which data points agents cite most across all rounds. The top 5 become the simulation's swing factors — surfaced in the final output.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══ DEBATE ═══ -->
 <section class="section" style="background:var(--surface)" id="debate">
   <div class="section-inner">
@@ -311,12 +354,26 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
               <div class="round-note">Agents anchor to real yfinance data — analyst consensus "hold" with +7.8% upside shapes opening positions.</div>
             </div>
           </div>
+          <div class="moderator-callout">
+            <div class="mod-icon">&#9878;</div>
+            <div>
+              <div class="mod-label">Moderator</div>
+              <div class="mod-text">Extracts strongest bull and bear arguments. Challenges outliers. Flags high-conviction dissenters. Shapes the next round.</div>
+            </div>
+          </div>
           <div class="round-row" id="rr1">
             <div class="round-num">Round 2</div>
             <div class="round-content">
               <div class="round-bar-track"><div class="round-bar-fill" id="rb1" style="width:0%;background:var(--gold)"></div></div>
               <div class="round-stats"><span>P(beat): 54.8%</span><span>11 bears · 19 neutral · 20 bulls</span></div>
               <div class="round-note">Bears push back on iron ore pricing. Quant traders hold near centre. Bulls defend copper thesis.</div>
+            </div>
+          </div>
+          <div class="moderator-callout">
+            <div class="mod-icon">&#9878;</div>
+            <div>
+              <div class="mod-label">Moderator</div>
+              <div class="mod-text">Updates argument ranking. Tracks which data points drove the most position changes. Identifies the debate's swing factors.</div>
             </div>
           </div>
           <div class="round-row" id="rr2">
@@ -360,7 +417,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
   <div class="section-inner">
     <div class="section-eyebrow">The Output</div>
     <h2 class="section-title">Not just a prediction.<br><em>A map of the debate.</em></h2>
-    <p class="section-desc">The most valuable part of Augur's output isn't the verdict. It's the swing factors — the specific things the agents disagreed about most. That's where the real insight lives.</p>
+    <p class="section-desc">The most valuable part isn't the verdict. It's the swing factors — the specific variables the moderator identified as most contested across all rounds. Computed from what agents actually argued about, not generated afterward.</p>
 
     <div class="output-mock" id="output-mock">
       <div class="output-bar">
@@ -392,7 +449,7 @@ nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;ali
           </div>
         </div>
         <div class="out-right">
-          <div class="swing-label">What they argued about most</div>
+          <div class="swing-label">Swing factors — identified by moderator</div>
           <div class="swing-item">
             <div class="swing-dot"></div>
             <div class="swing-text">Cost inflation — are rising costs temporary or permanent?</div>

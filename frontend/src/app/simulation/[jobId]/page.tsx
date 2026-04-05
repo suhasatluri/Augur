@@ -173,9 +173,14 @@ export default function SimulationPage() {
 
           {/* Swing factors */}
           <section>
-            <h2 className="font-heading text-lg text-gold/80 mb-3">
-              Top Swing Factors
-            </h2>
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="font-heading text-lg text-gold/80">
+                Swing Factors
+              </h2>
+              <span className="font-mono text-[9px] tracking-widest uppercase text-muted border border-surface-border px-2 py-0.5">
+                Moderator
+              </span>
+            </div>
             <SwingFactors factors={result.swing_factors} />
           </section>
 

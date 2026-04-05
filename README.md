@@ -45,9 +45,13 @@ yfinance ──→ current prices ─┤
                              │
                              ▼
               negotiation_runner (3 rounds, parallel archetype batches)
+                  ↕ moderator_agent (between rounds — Haiku)
+                  │  extracts bull/bear arguments
+                  │  challenges outliers, flags dissenters
+                  │  tracks swing factors
                              │
                              ▼
-              prediction_synthesiser → verdict
+              prediction_synthesiser → verdict + swing factors
 ```
 
 ## Data Sources
@@ -62,18 +66,21 @@ yfinance ──→ current prices ─┤
 | Perplexity Sonar | Real-time financial news, analyst sentiment | All ASX tickers |
 | Price Reaction Proxy | Beat/miss fallback from market response | All ASX tickers |
 | yfinance | Current prices, recommendations, growth | All ASX tickers |
+| ASIC Short Interest | Daily short position data | 669 ASX tickers |
+| Market Index | Director transactions, 10-year financials | ASX 100 |
 
 ## Stack
 - Python FastAPI · Neon PostgreSQL · Claude API
 - Next.js 14 · Cloudflare R2 · Railway
-- ASX Markit Digital API · yfinance
+- ASX Markit Digital API · yfinance · curl_cffi
 
 ## Architecture
-- **asx_scraper/** — proprietary data pipeline (PDFs, ASX API, company intel)
+- **asx_scraper/** — proprietary data pipeline (PDFs, ASX API, company intel, ASIC shorts, Market Index)
 - **seed_harvester/** — two-layer cache (slow: yfinance+Claude, fast: sentiment+intel)
 - **persona_forge/** — 50 analyst agents with bias-anchored starting probabilities
-- **negotiation_runner/** — 3-round structured debate
-- **prediction_synthesiser/** — final verdict with confidence intervals
+- **negotiation_runner/** — 3-round structured debate with moderator agent
+- **negotiation_runner/moderator.py** — structural moderator between rounds: extracts top arguments, challenges outliers, flags high-conviction dissenters, tracks swing factors
+- **prediction_synthesiser/** — final verdict with confidence intervals and moderator-identified swing factors
 
 ## Licence
 BSL 1.1 — free for non-commercial use.
@@ -81,4 +88,4 @@ Converts to Apache 2.0 after 4 years.
 See [LICENSE](LICENSE).
 
 ## Contributing
-Contributors welcome. See CONTRIBUTING.md (coming soon).
+Contributors welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
