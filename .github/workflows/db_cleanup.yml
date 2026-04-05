@@ -28,6 +28,11 @@ jobs:
           python3 -c "
           import asyncio, os, sys, logging
           logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
+
+          if not os.getenv('DATABASE_URL'):
+              print('DATABASE_URL not set — skipping cleanup')
+              sys.exit(0)
+
           sys.path.insert(0, os.getcwd())
           from db.schema import get_pool
           from db.retention import run_all
