@@ -42,6 +42,19 @@ class ScraperOrchestrator:
         self.pdf_extractor = PDFExtractor()
         self.prices = PriceScraper()
         self.metrics = MetricsComputer()
+        self._asic_data: dict = {}
+        self._asic_loaded: bool = False
+
+    async def _ensure_asic_data(self):
+        """Load ASIC short interest data once, share across all tickers."""
+        if not self._asic_loaded:
+            try:
+                from asx_scraper.sources.asic_short_interest import download_asic_data
+                self._asic_data = download_asic_data()
+                self._asic_loaded = True
+                logger.info(f"[orchestrator] ASIC data loaded ({len(self._asic_data)} tickers)")
+            except Exception as e:
+                logger.warning(f"[orchestrator] ASIC load failed: {e}")
 
     async def scrape_ticker(self, ticker: str) -> dict:
         """Full pipeline for one ticker."""
@@ -141,6 +154,67 @@ class ScraperOrchestrator:
             summary["metrics"] = metrics
         except Exception as e:
             errors.append(f"metrics: {e}")
+
+        # 6. Market signals — ASIC short interest + Market Index (curl_cffi)
+        try:
+            await self._ensure_asic_data()
+
+            from asx_scraper.sources.asic_short_interest import get_short_interest
+            short_data = get_short_interest(ticker, self._asic_data) if self._asic_data else None
+
+            from asx_scraper.sources.marketindex import get_director_transactions as mi_directors, get_financials as mi_financials
+
+            def _mi_scrape():
+                return mi_directors(ticker), mi_financials(ticker)
+
+            dir_sig, fin = await asyncio.get_event_loop().run_in_executor(None, _mi_scrape)
+
+            # Save to asx_metrics (update existing row created by MetricsComputer)
+            from db.schema import get_pool
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE asx_metrics SET
+                        short_pct = $2,
+                        short_signal = $3,
+                        short_score = $4,
+                        director_net_buy = $5,
+                        director_buys = $6,
+                        director_sells = $7,
+                        director_signal = $8,
+                        director_score = $9,
+                        npat_m = $10,
+                        npat_prior_m = $11,
+                        revenue_m = $12
+                    WHERE ticker = $1
+                """,
+                    ticker,
+                    float(short_data["pct_shorted"]) if short_data else None,
+                    short_data.get("signal") if short_data else None,
+                    float(short_data["signal_score"]) if short_data else None,
+                    float(dir_sig.get("net_buy_value", 0)),
+                    dir_sig.get("buy_count", 0),
+                    dir_sig.get("sell_count", 0),
+                    dir_sig.get("signal"),
+                    float(dir_sig.get("signal_score", 0.5)),
+                    float(fin["npat_m"]) if fin.get("npat_m") else None,
+                    float(fin["npat_prior_m"]) if fin.get("npat_prior_m") else None,
+                    float(fin["revenue_m"]) if fin.get("revenue_m") else None,
+                )
+
+            summary["short_interest"] = short_data.get("pct_shorted") if short_data else None
+            summary["short_signal"] = short_data.get("signal") if short_data else None
+            summary["director_signal"] = dir_sig.get("signal")
+            summary["mi_npat_m"] = fin.get("npat_m")
+
+            logger.info(
+                f"[orchestrator] {ticker} market signals: "
+                f"short={summary['short_interest']}% dir={summary['director_signal']} "
+                f"npat={summary['mi_npat_m']}M"
+            )
+        except Exception as e:
+            errors.append(f"market_signals: {e}")
+            logger.warning(f"[orchestrator] Market signals failed for {ticker}: {e}")
 
         elapsed = time.monotonic() - start
         summary["duration_s"] = round(elapsed, 1)

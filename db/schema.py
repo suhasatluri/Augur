@@ -251,6 +251,44 @@ BEGIN
         ALTER TABLE simulations ADD COLUMN seed_data JSONB;
     END IF;
 END $$;
+
+-- Migration: add market signal columns to asx_metrics
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'short_pct') THEN
+        ALTER TABLE asx_metrics ADD COLUMN short_pct FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'short_signal') THEN
+        ALTER TABLE asx_metrics ADD COLUMN short_signal TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'short_score') THEN
+        ALTER TABLE asx_metrics ADD COLUMN short_score FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'director_net_buy') THEN
+        ALTER TABLE asx_metrics ADD COLUMN director_net_buy FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'director_buys') THEN
+        ALTER TABLE asx_metrics ADD COLUMN director_buys INT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'director_sells') THEN
+        ALTER TABLE asx_metrics ADD COLUMN director_sells INT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'director_signal') THEN
+        ALTER TABLE asx_metrics ADD COLUMN director_signal TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'director_score') THEN
+        ALTER TABLE asx_metrics ADD COLUMN director_score FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'npat_m') THEN
+        ALTER TABLE asx_metrics ADD COLUMN npat_m FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'npat_prior_m') THEN
+        ALTER TABLE asx_metrics ADD COLUMN npat_prior_m FLOAT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'revenue_m') THEN
+        ALTER TABLE asx_metrics ADD COLUMN revenue_m FLOAT;
+    END IF;
+END $$;
 """
 
 _pool = None
