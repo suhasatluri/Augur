@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Augur — How It Works</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #08090D;
+  --surface: #0b0c12;
+  --card: #0e1018;
+  --border: #161924;
+  --gold: #C9A84C;
+  --gold-dim: rgba(201,168,76,.1);
+  --gold-line: rgba(201,168,76,.2);
+  --parchment: #F5F0E8;
+  --crimson: #8B1A2B;
+  --text: #E8E4DC;
+  --dim: #6a6560;
+  --green: #2D6A4F;
+  --green-bright: #4CAF7D;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden}
+
+/* ── HERO ── */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:80px 24px 60px;text-align:center;overflow:hidden}
+.hero-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.hero-content{position:relative;z-index:2;max-width:700px}
+.hero-eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;color:var(--gold);text-transform:uppercase;margin-bottom:20px;opacity:0;animation:fadeUp .8s ease .2s forwards}
+.hero-title{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(48px,7vw,88px);line-height:1.02;letter-spacing:.02em;margin-bottom:24px;opacity:0;animation:fadeUp .8s ease .4s forwards}
+.hero-title em{font-style:italic;color:var(--gold)}
+.hero-desc{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:300;color:var(--dim);line-height:1.9;max-width:520px;margin:0 auto 40px;opacity:0;animation:fadeUp .8s ease .6s forwards}
+.hero-scroll{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0;animation:fadeUp .8s ease 1.2s forwards;cursor:pointer}
+.scroll-line{width:1px;height:40px;background:linear-gradient(to bottom,var(--gold),transparent);animation:scrollPulse 2s infinite}
+
+/* ── SECTIONS ── */
+.section{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 24px;position:relative}
+.section-inner{max-width:900px;width:100%}
+.section-eyebrow{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--gold);text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.section-eyebrow::before{content:'';width:20px;height:1px;background:var(--gold);opacity:.5}
+.section-title{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(32px,4.5vw,54px);line-height:1.08;letter-spacing:.02em;margin-bottom:16px}
+.section-title em{font-style:italic;color:var(--gold)}
+.section-desc{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:300;color:var(--dim);line-height:1.85;max-width:560px;margin-bottom:48px}
+
+/* ── PROBLEM SECTION ── */
+.problem-compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:40px}
+.compare-card{border:1px solid var(--border);padding:28px 24px;background:var(--card);opacity:0;transform:translateY(20px);transition:all .6s ease}
+.compare-card.vis{opacity:1;transform:translateY(0)}
+.compare-card-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;padding:4px 10px;display:inline-block}
+.label-old{background:rgba(139,26,43,.15);color:var(--crimson);border:1px solid rgba(139,26,43,.3)}
+.label-new{background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold-line)}
+.compare-title{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--parchment);margin-bottom:10px}
+.compare-body{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:300;color:var(--dim);line-height:1.75}
+.compare-icon{font-size:32px;margin-bottom:14px}
+
+/* ── ANALOGY SECTION ── */
+.analogy-visual{display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:center;margin-top:48px}
+.analogy-side{opacity:0;transform:translateX(-30px);transition:all .7s ease}
+.analogy-side.right{transform:translateX(30px)}
+.analogy-side.vis{opacity:1;transform:translateX(0)}
+.analogy-vs{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:var(--dim);text-align:center;opacity:0;transition:opacity .7s ease .3s}
+.analogy-vs.vis{opacity:1}
+.analogy-box{border:1px solid var(--border);padding:24px;background:var(--card)}
+.analogy-box-title{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--parchment);margin-bottom:10px}
+.analogy-box-body{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);line-height:1.7}
+.analogy-verdict{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;padding:4px 10px;margin-top:12px;text-transform:uppercase}
+.verdict-bad{background:rgba(139,26,43,.15);color:var(--crimson);border:1px solid rgba(139,26,43,.3)}
+.verdict-good{background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold-line)}
+
+/* ── AGENTS SECTION ── */
+.agents-intro{text-align:center;margin-bottom:48px}
+.agents-swarm{position:relative;height:360px;margin:0 auto;max-width:700px}
+#swarm-canvas{width:100%;height:100%}
+.agents-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:32px}
+.agent-card{border:1px solid var(--border);border-top:2px solid;padding:16px 14px;background:var(--card);opacity:0;transform:scale(.95);transition:all .5s ease}
+.agent-card.vis{opacity:1;transform:scale(1)}
+.agent-emoji{font-size:22px;margin-bottom:8px}
+.agent-name{font-family:'Cormorant Garamond',serif;font-size:14px;font-weight:600;color:var(--parchment);margin-bottom:4px}
+.agent-count{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+.agent-desc{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);line-height:1.6;font-weight:300}
+
+/* ── DEBATE SECTION ── */
+.debate-arena{border:1px solid var(--border);background:var(--card);overflow:hidden;margin-top:40px}
+.debate-header{padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.debate-title-bar{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.round-indicator{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold);letter-spacing:.1em}
+.debate-body{padding:24px}
+.debate-rounds{display:flex;flex-direction:column;gap:16px}
+.round-row{display:flex;gap:16px;align-items:flex-start;opacity:0;transform:translateY(12px);transition:all .5s ease}
+.round-row.vis{opacity:1;transform:translateY(0)}
+.round-num{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;color:var(--gold);min-width:60px;padding-top:3px;text-transform:uppercase}
+.round-content{flex:1}
+.round-bar-track{height:6px;background:var(--border);border-radius:0;margin-bottom:6px;overflow:hidden}
+.round-bar-fill{height:100%;border-radius:0;transition:width 1.5s ease}
+.round-stats{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim)}
+.round-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);margin-top:4px;line-height:1.5}
+
+/* ── OUTPUT SECTION ── */
+.output-mock{border:1px solid var(--gold-line);background:var(--card);overflow:hidden;margin-top:40px;opacity:0;transform:translateY(24px);transition:all .7s ease}
+.output-mock.vis{opacity:1;transform:translateY(0)}
+.output-bar{padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.out-dot{width:8px;height:8px;border-radius:50%}
+.out-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.1em;margin-left:4px}
+.output-body{padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.out-left{}
+.out-ticker{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600;color:var(--parchment);margin-bottom:4px}
+.out-label{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;margin-bottom:16px}
+.prob-item{margin-bottom:12px}
+.prob-row{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.08em;margin-bottom:5px}
+.prob-track{height:4px;background:var(--border)}
+.prob-fill{height:100%;transition:width 2s ease}
+.out-right{}
+.swing-label{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-bottom:12px}
+.swing-item{display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.swing-item:last-child{border-bottom:none}
+.swing-dot{width:4px;height:4px;border-radius:50%;background:var(--gold);flex-shrink:0}
+.swing-text{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);line-height:1.5;flex:1}
+.swing-badge{font-family:'JetBrains Mono',monospace;font-size:7px;letter-spacing:.08em;padding:2px 6px;text-transform:uppercase;white-space:nowrap}
+.badge-high{background:rgba(139,26,43,.15);color:var(--crimson);border:1px solid rgba(139,26,43,.3)}
+.badge-med{background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold-line)}
+.badge-low{background:rgba(45,106,79,.15);color:var(--green-bright);border:1px solid rgba(45,106,79,.3)}
+.out-footer{padding:10px 16px;background:var(--surface);border-top:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:.06em}
+
+/* ── WHY SECTION ── */
+.why-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px}
+.why-card{border:1px solid var(--border);border-top:2px solid var(--gold);padding:24px 20px;background:var(--card);opacity:0;transform:translateY(16px);transition:all .5s ease}
+.why-card.vis{opacity:1;transform:translateY(0)}
+.why-num{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:10px}
+.why-title{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--parchment);margin-bottom:8px}
+.why-body{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);line-height:1.7;font-weight:300}
+
+/* ── CTA ── */
+.cta-section{min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 24px;text-align:center;background:radial-gradient(ellipse 60% 50% at 50% 50%,rgba(201,168,76,.06) 0%,transparent 70%)}
+.cta-title{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(36px,5vw,64px);line-height:1.05;margin-bottom:20px;opacity:0;animation:fadeUp .8s ease forwards}
+.cta-title em{font-style:italic;color:var(--gold)}
+.cta-desc{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);line-height:1.85;max-width:480px;margin:0 auto 36px;opacity:0;animation:fadeUp .8s ease .2s forwards}
+.cta-btn{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.12em;padding:14px 32px;background:var(--gold);color:var(--bg);border:none;cursor:pointer;text-transform:uppercase;text-decoration:none;display:inline-block;transition:all .2s;opacity:0;animation:fadeUp .8s ease .4s forwards}
+.cta-btn:hover{box-shadow:0 0 32px rgba(201,168,76,.4);transform:translateY(-2px)}
+.cta-disclaimer{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);margin-top:24px;letter-spacing:.06em;opacity:0;animation:fadeUp .8s ease .6s forwards}
+
+/* ── NAV ── */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 40px;background:rgba(8,9,13,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+.nav-logo{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:600;color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
+.nav-cta{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;padding:6px 14px;border:1px solid var(--gold-line);color:var(--gold);background:transparent;cursor:pointer;text-transform:uppercase;text-decoration:none;transition:all .2s}
+.nav-cta:hover{background:var(--gold-dim)}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scrollPulse{0%,100%{opacity:.3;transform:scaleY(.8)}50%{opacity:1;transform:scaleY(1)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+/* ── MOBILE ── */
+@media(max-width:768px){
+  .problem-compare{grid-template-columns:1fr}
+  .analogy-visual{grid-template-columns:1fr;gap:16px}
+  .analogy-vs{display:none}
+  .agents-grid{grid-template-columns:1fr 1fr}
+  .output-body{grid-template-columns:1fr}
+  .why-grid{grid-template-columns:1fr}
+  nav{padding:0 20px}
+  .section{padding:60px 20px}
+}
+
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border)}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">◉ Augur</div>
+  <a href="https://augur.vercel.app" class="nav-cta" target="_blank">Try it live →</a>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <canvas class="hero-canvas" id="hero-canvas"></canvas>
+  <div class="hero-content">
+    <div class="hero-eyebrow">How Augur Works</div>
+    <h1 class="hero-title">Not one opinion.<br><em>Fifty arguing.</em></h1>
+    <p class="hero-desc">Augur doesn't predict the future with a single model. It spawns 50 independent AI analysts, gives them the same data, and watches what they argue about. The disagreement is the signal.</p>
+    <div class="hero-scroll" onclick="document.getElementById('problem').scrollIntoView({behavior:'smooth'})">
+      <div class="scroll-line"></div>
+      Scroll to explore
+    </div>
+  </div>
+</section>
+
+<!-- ═══ PROBLEM ═══ -->
+<section class="section" id="problem">
+  <div class="section-inner">
+    <div class="section-eyebrow">The Problem</div>
+    <h2 class="section-title">Most predictions come from<br><em>one voice.</em></h2>
+    <p class="section-desc">A single model, a single analyst, a single opinion. When they're wrong — and they often are — there's no way to know why or how confident they should have been.</p>
+    <div class="problem-compare">
+      <div class="compare-card" id="pc1">
+        <div class="compare-icon">🎯</div>
+        <span class="compare-card-label label-old">The old way</span>
+        <div class="compare-title">One model, one answer</div>
+        <div class="compare-body">A single AI or analyst looks at the data and gives you a number. "BHP will beat earnings." No explanation of what could go wrong. No measure of confidence. Just an answer.</div>
+        <div class="analogy-verdict verdict-bad">Black box</div>
+      </div>
+      <div class="compare-card" id="pc2">
+        <div class="compare-icon">⬡</div>
+        <span class="compare-card-label label-new">The Augur way</span>
+        <div class="compare-title">Fifty analysts, one debate</div>
+        <div class="compare-body">50 AI analysts with different personalities and approaches look at the same data — and argue. The result isn't just a prediction. It's a map of where the real uncertainty lives.</div>
+        <div class="analogy-verdict verdict-good">Transparent</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ ANALOGY ═══ -->
+<section class="section" style="background:var(--surface)" id="analogy">
+  <div class="section-inner">
+    <div class="section-eyebrow">Think of it this way</div>
+    <h2 class="section-title">It's like asking a<br><em>room full of experts.</em></h2>
+    <p class="section-desc">Imagine you're about to make a big financial decision. Would you rather ask one person — or put 50 specialists in a room and listen to what they argue about?</p>
+    <div class="analogy-visual">
+      <div class="analogy-side" id="an-left">
+        <div class="analogy-box">
+          <div class="analogy-box-title">One friend's opinion</div>
+          <div class="analogy-box-body">Your mate works in finance. He says "looks good to me." You have no idea how confident he is, what he missed, or what would make him change his mind.</div>
+          <div class="analogy-verdict verdict-bad">Limited perspective</div>
+        </div>
+      </div>
+      <div class="analogy-vs" id="an-vs">vs</div>
+      <div class="analogy-side right" id="an-right">
+        <div class="analogy-box">
+          <div class="analogy-box-title">A room of 50 specialists</div>
+          <div class="analogy-box-body">The optimists make their case. The pessimists push back. The cautious ones flag risks everyone else missed. After 3 rounds of structured debate, you know exactly where they disagreed — and why.</div>
+          <div class="analogy-verdict verdict-good">Richer picture</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ AGENTS ═══ -->
+<section class="section" id="agents">
+  <div class="section-inner">
+    <div class="section-eyebrow">The 50 Agents</div>
+    <h2 class="section-title">Each one thinks<br><em>differently.</em></h2>
+    <p class="section-desc">Augur creates 50 unique AI analysts before every simulation. Not clones — each has a distinct personality, a different way of reading data, and a different threshold for changing their mind.</p>
+
+    <div class="agents-swarm">
+      <canvas id="swarm-canvas"></canvas>
+    </div>
+
+    <div class="agents-grid">
+      <div class="agent-card" id="ag0" style="border-top-color:var(--gold)">
+        <div class="agent-emoji">📈</div>
+        <div class="agent-name">The Optimist</div>
+        <div class="agent-count">10 agents</div>
+        <div class="agent-desc">Focuses on growth signals. Believes in management. Sees opportunities others miss.</div>
+      </div>
+      <div class="agent-card" id="ag1" style="border-top-color:var(--crimson)">
+        <div class="agent-emoji">📉</div>
+        <div class="agent-name">The Sceptic</div>
+        <div class="agent-count">10 agents</div>
+        <div class="agent-desc">Questions everything. Looks for hidden costs. Doesn't trust guidance.</div>
+      </div>
+      <div class="agent-card" id="ag2" style="border-top-color:#4A9DB5">
+        <div class="agent-emoji">⚙️</div>
+        <div class="agent-name">The Numbers Person</div>
+        <div class="agent-count">10 agents</div>
+        <div class="agent-desc">Only trusts patterns and history. Ignores stories. Follows the data.</div>
+      </div>
+      <div class="agent-card" id="ag3" style="border-top-color:#8B7FE8">
+        <div class="agent-emoji">🛡️</div>
+        <div class="agent-name">The Risk Watcher</div>
+        <div class="agent-count">10 agents</div>
+        <div class="agent-desc">Always asks: what could go wrong? Spots tail risks others overlook.</div>
+      </div>
+      <div class="agent-card" id="ag4" style="border-top-color:var(--green-bright)">
+        <div class="agent-emoji">📱</div>
+        <div class="agent-name">The Everyday Investor</div>
+        <div class="agent-count">10 agents</div>
+        <div class="agent-desc">Reacts to news and sentiment. Represents how most people actually think.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ DEBATE ═══ -->
+<section class="section" style="background:var(--surface)" id="debate">
+  <div class="section-inner">
+    <div class="section-eyebrow">The Debate</div>
+    <h2 class="section-title">They argue.<br><em>Three rounds.</em></h2>
+    <p class="section-desc">Each round, every agent sees the group's current distribution and must decide: hold my position, or update it? Bulls who can't defend their thesis against bear arguments drift down. Bears facing strong data drift up. After 3 rounds, the positions that survive are the ones with the strongest evidence behind them.</p>
+    <p class="section-desc" style="margin-top:0">Watch how opinion shifts across rounds for a real BHP simulation.</p>
+
+    <div class="debate-arena">
+      <div class="debate-header">
+        <div class="debate-title-bar">BHP Group — Earnings Simulation</div>
+        <div class="round-indicator" id="round-display">Round 0 / 3</div>
+      </div>
+      <div class="debate-body">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.08em;margin-bottom:16px;text-transform:uppercase">Probability of beating earnings consensus</div>
+        <div class="debate-rounds" id="debate-rounds">
+          <div class="round-row" id="rr0">
+            <div class="round-num">Round 1</div>
+            <div class="round-content">
+              <div class="round-bar-track"><div class="round-bar-fill" id="rb0" style="width:0%;background:var(--gold)"></div></div>
+              <div class="round-stats"><span>P(beat): 55.4%</span><span>9 bears · 20 neutral · 21 bulls</span></div>
+              <div class="round-note">Agents anchor to real yfinance data — analyst consensus "hold" with +7.8% upside shapes opening positions.</div>
+            </div>
+          </div>
+          <div class="round-row" id="rr1">
+            <div class="round-num">Round 2</div>
+            <div class="round-content">
+              <div class="round-bar-track"><div class="round-bar-fill" id="rb1" style="width:0%;background:var(--gold)"></div></div>
+              <div class="round-stats"><span>P(beat): 54.8%</span><span>11 bears · 19 neutral · 20 bulls</span></div>
+              <div class="round-note">Bears push back on iron ore pricing. Quant traders hold near centre. Bulls defend copper thesis.</div>
+            </div>
+          </div>
+          <div class="round-row" id="rr2">
+            <div class="round-num">Round 3</div>
+            <div class="round-content">
+              <div class="round-bar-track"><div class="round-bar-fill" id="rb2" style="width:0%;background:var(--gold)"></div></div>
+              <div class="round-stats"><span style="color:var(--gold)">P(beat): 53.6% → TOSS-UP</span><span>13 bears · 18 neutral · 19 bulls</span></div>
+              <div class="round-note">Final verdict: a contested call. The swarm is genuinely divided — real data grounds the debate.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ OUTPUT ═══ -->
+<section class="section" id="output">
+  <div class="section-inner">
+    <div class="section-eyebrow">The Output</div>
+    <h2 class="section-title">Not just a prediction.<br><em>A map of the debate.</em></h2>
+    <p class="section-desc">The most valuable part of Augur's output isn't the verdict. It's the swing factors — the specific things the agents disagreed about most. That's where the real insight lives.</p>
+
+    <div class="output-mock" id="output-mock">
+      <div class="output-bar">
+        <div class="out-dot" style="background:#ff5f57"></div>
+        <div class="out-dot" style="background:#febc2e"></div>
+        <div class="out-dot" style="background:#28c840"></div>
+        <div class="out-title">augur · simulation complete · BHP.ASX</div>
+      </div>
+      <div class="output-body">
+        <div class="out-left">
+          <div class="out-ticker">BHP.ASX</div>
+          <div class="out-label">Probability Distribution · 50 agents · 3 rounds</div>
+          <div class="prob-item">
+            <div class="prob-row"><span style="color:var(--green-bright)">Will beat expectations</span><span style="color:var(--green-bright)">26%</span></div>
+            <div class="prob-track"><div class="prob-fill" id="pb0" style="width:0%;background:var(--green)"></div></div>
+          </div>
+          <div class="prob-item">
+            <div class="prob-row"><span style="color:var(--gold)">Will meet expectations</span><span style="color:var(--gold)">18%</span></div>
+            <div class="prob-track"><div class="prob-fill" id="pb1" style="width:0%;background:var(--gold)"></div></div>
+          </div>
+          <div class="prob-item">
+            <div class="prob-row"><span style="color:var(--crimson)">Will miss expectations</span><span style="color:var(--crimson)">56%</span></div>
+            <div class="prob-track"><div class="prob-fill" id="pb2" style="width:0%;background:var(--crimson)"></div></div>
+          </div>
+          <div style="margin-top:20px;padding:12px 14px;border:1px solid var(--gold-line);background:var(--gold-dim)">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Verdict</div>
+            <div style="font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--parchment)">Lean Miss</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);margin-top:4px">56% of agents expect a miss. Moderate conviction.</div>
+          </div>
+        </div>
+        <div class="out-right">
+          <div class="swing-label">What they argued about most</div>
+          <div class="swing-item">
+            <div class="swing-dot"></div>
+            <div class="swing-text">Cost inflation — are rising costs temporary or permanent?</div>
+            <div class="swing-badge badge-high">High contention</div>
+          </div>
+          <div class="swing-item">
+            <div class="swing-dot"></div>
+            <div class="swing-text">Management guidance — do they typically deliver on promises?</div>
+            <div class="swing-badge badge-med">Contested</div>
+          </div>
+          <div class="swing-item">
+            <div class="swing-dot"></div>
+            <div class="swing-text">Operational execution — is production running to plan?</div>
+            <div class="swing-badge badge-med">Contested</div>
+          </div>
+          <div class="swing-item">
+            <div class="swing-dot"></div>
+            <div class="swing-text">China demand — is the slowdown already priced in?</div>
+            <div class="swing-badge badge-low">Consensus</div>
+          </div>
+          <div class="swing-item">
+            <div class="swing-dot"></div>
+            <div class="swing-text">Currency moves — AUD/USD impact on reported earnings</div>
+            <div class="swing-badge badge-low">Consensus</div>
+          </div>
+        </div>
+      </div>
+      <div class="out-footer">This is not financial advice. Research tool only. Augur does not hold an AFSL.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ VERDICTS ═══ -->
+<section class="section" id="verdicts">
+  <div class="section-inner">
+    <div class="section-eyebrow">Understanding Results</div>
+    <h2 class="section-title">What the<br><em>verdicts mean.</em></h2>
+    <p class="section-desc">Every simulation ends with a verdict. Here's what each one tells you — in plain language, not finance jargon.</p>
+
+    <div style="max-width:680px;margin:0 auto">
+      <!-- Scale bar -->
+      <div style="display:flex;gap:3px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:24px">
+        <div style="flex:1;background:#E74C3C"></div>
+        <div style="flex:1;background:rgba(231,76,60,.5)"></div>
+        <div style="flex:1;background:rgba(201,168,76,.5)"></div>
+        <div style="flex:1;background:rgba(76,175,125,.5)"></div>
+        <div style="flex:1;background:#4CAF7D"></div>
+      </div>
+
+      <!-- Verdict cards -->
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid #E74C3C;background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E74C3C;white-space:nowrap;min-width:110px;font-weight:500">LIKELY MISS</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">The group strongly expects a miss</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">Most agents believe earnings will fall short of what analysts predicted. High conviction.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid rgba(231,76,60,.6);background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(231,76,60,.8);white-space:nowrap;min-width:110px;font-weight:500">LEAN MISS</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">More agents lean bearish, but it's not a strong call</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">The group tilts toward a miss, but there's meaningful disagreement. Moderate conviction.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid var(--gold);background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);white-space:nowrap;min-width:110px;font-weight:500">TOSS-UP</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">Genuinely uncertain — the group is split</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">Roughly equal arguments for beat and miss. The swing factors section tells you where they disagreed.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid rgba(76,175,125,.6);background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(76,175,125,.8);white-space:nowrap;min-width:110px;font-weight:500">LEAN BEAT</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">More agents lean bullish, but it's not a strong call</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">The group tilts toward a beat, but bears made valid counter-arguments. Moderate conviction.</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:16px;border:1px solid var(--border);border-left:3px solid #4CAF7D;background:var(--card);border-radius:6px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4CAF7D;white-space:nowrap;min-width:110px;font-weight:500">LIKELY BEAT</div>
+          <div>
+            <div style="font-size:14px;color:var(--text);margin-bottom:4px">The group strongly expects a beat</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">Most agents believe earnings will exceed expectations. Strong analyst consensus and financial data support.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:24px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim)">
+        Each verdict is based on 50 agents debating across 3 rounds, anchored to real financial data.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ WHY ═══ -->
+<section class="section" style="background:var(--surface)" id="why">
+  <div class="section-inner">
+    <div class="section-eyebrow">Why It Matters</div>
+    <h2 class="section-title">Three things you get<br><em>nowhere else.</em></h2>
+    <p class="section-desc">Augur isn't built to replace your thinking. It's built to show you what the debate looks like before you make up your mind.</p>
+    <div class="why-grid">
+      <div class="why-card" id="wc0">
+        <div class="why-num">01 — Disagreement</div>
+        <div class="why-title">Where experts don't agree</div>
+        <div class="why-body">When 48 of 50 agents agree, the outcome is fairly predictable. When they're split 26/24, you're looking at genuine uncertainty. Augur shows you which scenario you're in — before the announcement.</div>
+      </div>
+      <div class="why-card" id="wc1">
+        <div class="why-num">02 — Reasoning</div>
+        <div class="why-title">Not just what — but why</div>
+        <div class="why-body">Every swing factor comes with a bull argument and a bear argument, written in plain English. You don't need to be a finance expert to understand what the debate is about.</div>
+      </div>
+      <div class="why-card" id="wc2">
+        <div class="why-num">03 — Honesty</div>
+        <div class="why-title">It tells you when it doesn't know</div>
+        <div class="why-body">When agents stay widely split after 3 rounds, Augur flags HIGH UNCERTAINTY. It won't give you false confidence. A tool that admits uncertainty is more useful than one that always sounds sure.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CTA ═══ -->
+<section class="cta-section">
+  <h2 class="cta-title">Ready to hear<br><em>all 50 voices?</em></h2>
+  <p class="cta-desc">Pick any ASX 100 company. Run a simulation. See what 50 AI analysts argue about — in under 3 minutes.</p>
+  <a href="https://augur.vercel.app" class="cta-btn" target="_blank">Run a simulation →</a>
+  <div class="cta-disclaimer">Free to try · No account required · Not financial advice</div>
+</section>
+
+<script>
+// ── HERO CANVAS ──────────────────────────────────────────────
+const hc = document.getElementById('hero-canvas');
+const hctx = hc.getContext('2d');
+let pts = [];
+
+function resizeHero() {
+  hc.width = hc.offsetWidth;
+  hc.height = hc.offsetHeight;
+  pts = Array.from({length: 60}, () => ({
+    x: Math.random() * hc.width,
+    y: Math.random() * hc.height,
+    vx: (Math.random() - .5) * .6,
+    vy: (Math.random() - .5) * .6,
+    pulse: Math.random() * Math.PI * 2,
+    r: Math.random() * 1.5 + .5
+  }));
+}
+resizeHero();
+window.addEventListener('resize', resizeHero);
+
+function heroFrame() {
+  hctx.fillStyle = 'rgba(8,9,13,.15)';
+  hctx.fillRect(0, 0, hc.width, hc.height);
+  pts.forEach((p, i) => {
+    p.pulse += .02;
+    pts.forEach((q, j) => {
+      if (j <= i) return;
+      const dx = p.x - q.x, dy = p.y - q.y, d = Math.sqrt(dx*dx+dy*dy);
+      if (d < 100) {
+        hctx.beginPath();
+        hctx.strokeStyle = `rgba(201,168,76,${(1-d/100)*.15})`;
+        hctx.lineWidth = .5;
+        hctx.moveTo(p.x, p.y);
+        hctx.lineTo(q.x, q.y);
+        hctx.stroke();
+      }
+    });
+    hctx.beginPath();
+    hctx.arc(p.x, p.y, p.r + Math.sin(p.pulse) * .5, 0, Math.PI*2);
+    hctx.fillStyle = `rgba(201,168,76,${.3 + Math.sin(p.pulse)*.2})`;
+    hctx.fill();
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0 || p.x > hc.width) p.vx *= -1;
+    if (p.y < 0 || p.y > hc.height) p.vy *= -1;
+  });
+  requestAnimationFrame(heroFrame);
+}
+heroFrame();
+
+// ── SWARM CANVAS ─────────────────────────────────────────────
+const sc = document.getElementById('swarm-canvas');
+const sctx = sc.getContext('2d');
+const ARCHETYPES = [
+  {col:'#C9A84C', label:'Optimist'},
+  {col:'#8B1A2B', label:'Sceptic'},
+  {col:'#4A9DB5', label:'Numbers'},
+  {col:'#8B7FE8', label:'Risk'},
+  {col:'#4CAF7D', label:'Everyday'}
+];
+let agents = [];
+
+function resizeSwarm() {
+  sc.width = sc.offsetWidth;
+  sc.height = sc.offsetHeight;
+  agents = Array.from({length: 50}, (_, i) => {
+    const arch = ARCHETYPES[Math.floor(i/10)];
+    const cx = (Math.floor(i/10) + .5) * (sc.width/5);
+    return {
+      x: cx + (Math.random()-.5)*80,
+      y: sc.height/2 + (Math.random()-.5)*120,
+      vx: (Math.random()-.5)*1.2,
+      vy: (Math.random()-.5)*1.2,
+      cx, cy: sc.height/2,
+      col: arch.col,
+      pulse: Math.random()*Math.PI*2,
+      conviction: Math.random()
+    };
+  });
+}
+resizeSwarm();
+window.addEventListener('resize', resizeSwarm);
+
+function swarmFrame() {
+  sctx.clearRect(0, 0, sc.width, sc.height);
+  sctx.fillStyle = 'rgba(8,9,13,.4)';
+  sctx.fillRect(0, 0, sc.width, sc.height);
+
+  agents.forEach((a, i) => {
+    a.pulse += .03;
+    // Attraction to cluster center
+    a.vx += (a.cx - a.x) * .002;
+    a.vy += (a.cy - a.y) * .002;
+    // Damping
+    a.vx *= .98; a.vy *= .98;
+    a.x += a.vx; a.y += a.vy;
+
+    // Draw connections within archetype
+    agents.forEach((b, j) => {
+      if (j <= i || Math.floor(i/10) !== Math.floor(j/10)) return;
+      const dx = a.x-b.x, dy = a.y-b.y, d = Math.sqrt(dx*dx+dy*dy);
+      if (d < 60) {
+        sctx.beginPath();
+        sctx.strokeStyle = a.col.replace(')',`,${(1-d/60)*.3})`).replace('rgb','rgba').replace('#','');
+        // Use hex color with alpha
+        const hex = a.col;
+        const r = parseInt(hex.slice(1,3),16);
+        const g = parseInt(hex.slice(3,5),16);
+        const b2 = parseInt(hex.slice(5,7),16);
+        sctx.strokeStyle = `rgba(${r},${g},${b2},${(1-d/60)*.25})`;
+        sctx.lineWidth = .8;
+        sctx.moveTo(a.x,a.y);
+        sctx.lineTo(b.x,b.y);
+        sctx.stroke();
+      }
+    });
+
+    // Draw agent dot
+    const r = parseInt(a.col.slice(1,3),16);
+    const g = parseInt(a.col.slice(3,5),16);
+    const b3 = parseInt(a.col.slice(5,7),16);
+    sctx.beginPath();
+    sctx.arc(a.x, a.y, 2.5 + Math.sin(a.pulse)*.8, 0, Math.PI*2);
+    sctx.fillStyle = `rgba(${r},${g},${b3},${.5+Math.sin(a.pulse)*.3})`;
+    sctx.fill();
+  });
+
+  // Labels
+  ARCHETYPES.forEach((arch, i) => {
+    const cx = (i+.5) * (sc.width/5);
+    sctx.fillStyle = arch.col;
+    sctx.font = '9px JetBrains Mono';
+    sctx.textAlign = 'center';
+    sctx.globalAlpha = .6;
+    sctx.fillText(arch.label.toUpperCase(), cx, sc.height - 10);
+    sctx.globalAlpha = 1;
+  });
+
+  requestAnimationFrame(swarmFrame);
+}
+swarmFrame();
+
+// ── INTERSECTION OBSERVER ────────────────────────────────────
+const targets = {
+  'pc1': document.getElementById('pc1'),
+  'pc2': document.getElementById('pc2'),
+  'an-left': document.getElementById('an-left'),
+  'an-vs': document.getElementById('an-vs'),
+  'an-right': document.getElementById('an-right'),
+  'ag0': document.getElementById('ag0'),
+  'ag1': document.getElementById('ag1'),
+  'ag2': document.getElementById('ag2'),
+  'ag3': document.getElementById('ag3'),
+  'ag4': document.getElementById('ag4'),
+  'rr0': document.getElementById('rr0'),
+  'rr1': document.getElementById('rr1'),
+  'rr2': document.getElementById('rr2'),
+  'output-mock': document.getElementById('output-mock'),
+  'wc0': document.getElementById('wc0'),
+  'wc1': document.getElementById('wc1'),
+  'wc2': document.getElementById('wc2'),
+};
+
+// Stagger delays
+const delays = {
+  'pc1': 0, 'pc2': 150,
+  'an-left': 0, 'an-vs': 200, 'an-right': 100,
+  'ag0': 0, 'ag1': 100, 'ag2': 200, 'ag3': 300, 'ag4': 400,
+  'rr0': 0, 'rr1': 300, 'rr2': 600,
+  'output-mock': 0,
+  'wc0': 0, 'wc1': 150, 'wc2': 300,
+};
+
+// Round bar widths
+const roundWidths = [55.4, 54.8, 53.6];
+
+const obs = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const id = entry.target.id;
+    const delay = delays[id] || 0;
+
+    setTimeout(() => {
+      entry.target.classList.add('vis');
+
+      // Animate round bars
+      if (id.startsWith('rr')) {
+        const idx = parseInt(id.slice(2));
+        setTimeout(() => {
+          const bar = document.getElementById('rb'+idx);
+          if (bar) bar.style.width = roundWidths[idx] + '%';
+          document.getElementById('round-display').textContent = `Round ${idx+1} / 3`;
+        }, 200);
+      }
+
+      // Animate output probability bars
+      if (id === 'output-mock') {
+        setTimeout(() => {
+          document.getElementById('pb0').style.width = '26%';
+          document.getElementById('pb1').style.width = '18%';
+          document.getElementById('pb2').style.width = '56%';
+        }, 400);
+      }
+    }, delay);
+  });
+}, {threshold: 0.2});
+
+Object.values(targets).forEach(el => { if (el) obs.observe(el); });
+</script>
+</body>
+</html>

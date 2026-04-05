@@ -30,7 +30,7 @@ export default function RootLayout({
         className={`${cormorant.variable} ${jetbrains.variable} font-mono antialiased bg-background text-foreground`}
       >
         <div className="min-h-screen flex flex-col">
-          <header className="border-b border-surface-border px-6 py-4">
+          <header className="border-b border-surface-border px-6 py-4 flex items-center justify-between">
             <a href="/" className="flex items-center gap-3">
               <span className="font-heading text-2xl font-bold text-gold">
                 AUGUR
@@ -38,6 +38,9 @@ export default function RootLayout({
               <span className="text-xs text-muted tracking-widest uppercase">
                 ASX Earnings Predictor
               </span>
+            </a>
+            <a href="/about" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
+              How it works
             </a>
           </header>
           <main className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
