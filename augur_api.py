@@ -17,7 +17,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Query, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Header, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -702,3 +702,152 @@ async def admin_stats(
         _admin_cache.pop(oldest, None)
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Calibration
+# ---------------------------------------------------------------------------
+
+
+def _decode_row(row) -> dict:
+    """Convert asyncpg Record to JSON-friendly dict."""
+    import decimal
+    out = {}
+    for k, v in dict(row).items():
+        if isinstance(v, decimal.Decimal):
+            out[k] = float(v)
+        elif hasattr(v, "isoformat"):
+            out[k] = v.isoformat()
+        else:
+            out[k] = v
+    return out
+
+
+@app.get("/admin/calibration")
+async def admin_calibration(
+    x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret"),
+):
+    """Calibration tracker — Augur predictions vs actual outcomes."""
+    if not _ADMIN_SECRET or x_admin_secret != _ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        stats = await conn.fetchrow("""
+            SELECT
+                COUNT(*) AS total_predictions,
+                COUNT(*) FILTER (WHERE actual_beat IS NOT NULL) AS validated,
+                COUNT(*) FILTER (
+                    WHERE actual_beat IS NULL AND report_date >= CURRENT_DATE
+                ) AS pending_future,
+                COUNT(*) FILTER (
+                    WHERE actual_beat IS NULL AND report_date < CURRENT_DATE
+                ) AS awaiting_result,
+                ROUND(AVG(brier_score)::numeric, 4) AS avg_brier_score,
+                COUNT(*) FILTER (
+                    WHERE (actual_beat = TRUE AND augur_probability >= 0.5)
+                    OR (actual_beat = FALSE AND augur_probability < 0.5)
+                ) AS correct_direction,
+                COUNT(*) FILTER (WHERE actual_beat IS NOT NULL) AS total_scored
+            FROM calibration
+        """)
+
+        pending = await conn.fetch("""
+            SELECT ticker, report_date, days_before_report,
+                   augur_probability, augur_verdict, simulated_at
+            FROM calibration
+            WHERE actual_beat IS NULL AND report_date >= CURRENT_DATE
+            ORDER BY report_date ASC
+            LIMIT 30
+        """)
+
+        validated = await conn.fetch("""
+            SELECT ticker, report_date, augur_probability, augur_verdict,
+                   actual_beat, actual_eps, consensus_eps, eps_surprise_pct,
+                   brier_score, result_source, days_before_report
+            FROM calibration
+            WHERE actual_beat IS NOT NULL
+            ORDER BY report_date DESC
+            LIMIT 50
+        """)
+
+        buckets = await conn.fetch("""
+            SELECT ROUND(augur_probability * 10) / 10 AS probability_bucket,
+                   COUNT(*) AS count,
+                   AVG(CASE WHEN actual_beat THEN 1.0 ELSE 0.0 END) AS actual_beat_rate,
+                   AVG(brier_score) AS avg_brier
+            FROM calibration
+            WHERE actual_beat IS NOT NULL
+            GROUP BY probability_bucket
+            ORDER BY probability_bucket
+        """)
+
+    total_scored = stats["total_scored"] or 0
+    correct = stats["correct_direction"] or 0
+    accuracy = round(correct / total_scored * 100, 1) if total_scored > 0 else None
+
+    return {
+        "summary": {
+            **_decode_row(stats),
+            "accuracy_pct": accuracy,
+            "random_baseline_brier": 0.25,
+        },
+        "pending": [_decode_row(r) for r in pending],
+        "validated": [_decode_row(r) for r in validated],
+        "calibration_curve": [_decode_row(r) for r in buckets],
+    }
+
+
+@app.post("/admin/calibration/{ticker}/result")
+async def set_calibration_result(
+    ticker: str,
+    x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret"),
+    actual_beat: bool = Body(...),
+    actual_eps: Optional[float] = Body(None),
+    consensus_eps: Optional[float] = Body(None),
+    notes: Optional[str] = Body(None),
+):
+    """Manual override for cases where yfinance is wrong or unavailable."""
+    if not _ADMIN_SECRET or x_admin_secret != _ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT id, augur_probability
+            FROM calibration
+            WHERE ticker = $1 AND actual_beat IS NULL
+            ORDER BY report_date DESC
+            LIMIT 1
+        """, ticker.upper())
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{ticker} not found in calibration or already scored",
+            )
+
+        p = float(row["augur_probability"])
+        outcome = 1.0 if actual_beat else 0.0
+        brier = round((p - outcome) ** 2, 6)
+
+        eps_surprise = None
+        if actual_eps is not None and consensus_eps is not None and consensus_eps != 0:
+            eps_surprise = round(
+                (actual_eps - consensus_eps) / abs(consensus_eps) * 100, 4
+            )
+
+        await conn.execute("""
+            UPDATE calibration SET
+                actual_beat        = $1,
+                actual_eps         = $2,
+                consensus_eps      = $3,
+                eps_surprise_pct   = $4,
+                result_source      = 'manual',
+                result_verified_at = NOW(),
+                brier_score        = $5,
+                notes              = $6
+            WHERE id = $7
+        """, actual_beat, actual_eps, consensus_eps, eps_surprise, brier, notes, row["id"])
+
+    return {"ticker": ticker.upper(), "actual_beat": actual_beat, "brier_score": brier}

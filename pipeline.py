@@ -262,7 +262,8 @@ async def _run_pipeline_inner(
 
     elapsed = (time.monotonic() - start) * 1000
 
-    # Write token tracking + quality metrics
+    # Write token tracking + quality metrics + final probability
+    final_probability = report.distribution.mean_probability
     try:
         tokens = runner.token_summary
         px_usage = get_session_usage()
@@ -274,8 +275,9 @@ async def _run_pipeline_inner(
                     estimated_cost_usd = $5, convergence_score = $6,
                     duration_seconds = $7, rounds_completed = $8,
                     perplexity_requests = $9, perplexity_prompt_tokens = $10,
-                    perplexity_completion_tokens = $11, perplexity_cost_usd = $12
-                WHERE id = $13""",
+                    perplexity_completion_tokens = $11, perplexity_cost_usd = $12,
+                    final_probability = $13
+                WHERE id = $14""",
                 tokens["sonnet_input"], tokens["sonnet_output"],
                 tokens["haiku_input"], tokens["haiku_output"],
                 tokens["estimated_cost_usd"],
@@ -284,10 +286,50 @@ async def _run_pipeline_inner(
                 neg_result.rounds_completed,
                 px_usage["requests"], px_usage["prompt_tokens"],
                 px_usage["completion_tokens"], px_usage["cost_usd"],
+                round(final_probability, 3),
                 simulation_id,
             )
     except Exception as e:
         logger.warning(f"[pipeline] Token tracking write failed: {e}")
+
+    # Auto-register in calibration table if reporting_date is set
+    # and on/after today (so we have a future outcome to validate against)
+    if reporting_date and final_probability is not None:
+        try:
+            from datetime import datetime, timezone
+            report_dt = datetime.strptime(reporting_date, "%Y-%m-%d").date()
+            sim_dt = datetime.now(timezone.utc)
+            days_before = (report_dt - sim_dt.date()).days
+
+            if days_before >= 0:
+                p = float(final_probability)
+                if p >= 0.65:
+                    verdict_label = "LIKELY BEAT"
+                elif p >= 0.55:
+                    verdict_label = "LEAN BEAT"
+                elif p >= 0.45:
+                    verdict_label = "TOSS-UP"
+                elif p >= 0.35:
+                    verdict_label = "LEAN MISS"
+                else:
+                    verdict_label = "LIKELY MISS"
+
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        """INSERT INTO calibration
+                            (simulation_id, ticker, report_date, simulated_at,
+                             days_before_report, augur_probability, augur_verdict)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7)
+                           ON CONFLICT (simulation_id) DO NOTHING""",
+                        simulation_id, ticker, report_dt, sim_dt,
+                        days_before, round(p, 3), verdict_label,
+                    )
+                logger.info(
+                    f"[calibration] {ticker} registered: P={p:.3f} "
+                    f"{verdict_label} ({days_before}d before report)"
+                )
+        except Exception as e:
+            logger.warning(f"[calibration] register failed: {e}")
 
     logger.info(f"[pipeline] Full pipeline complete in {elapsed/1000:.1f}s — verdict: {report.verdict}")
 

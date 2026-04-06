@@ -18,6 +18,60 @@ interface Stats {
   range?: { from: string; to: string };
 }
 
+interface CalibrationData {
+  summary: {
+    total_predictions: number;
+    validated: number;
+    pending_future: number;
+    awaiting_result: number;
+    avg_brier_score: number | null;
+    correct_direction: number;
+    total_scored: number;
+    accuracy_pct: number | null;
+    random_baseline_brier: number;
+  };
+  pending: Array<{
+    ticker: string;
+    report_date: string;
+    days_before_report: number;
+    augur_probability: number;
+    augur_verdict: string;
+    simulated_at: string;
+  }>;
+  validated: Array<{
+    ticker: string;
+    report_date: string;
+    augur_probability: number;
+    augur_verdict: string;
+    actual_beat: boolean;
+    actual_eps: number | null;
+    consensus_eps: number | null;
+    eps_surprise_pct: number | null;
+    brier_score: number;
+    result_source: string;
+    days_before_report: number;
+  }>;
+  calibration_curve: Array<{
+    probability_bucket: number;
+    count: number;
+    actual_beat_rate: number;
+    avg_brier: number;
+  }>;
+}
+
+function brierColor(b: number | null): string {
+  if (b === null || b === undefined) return "text-muted";
+  if (b < 0.10) return "text-emerald-400";
+  if (b <= 0.20) return "text-amber-400";
+  return "text-red-400";
+}
+
+function daysFromToday(reportDate: string): number {
+  const r = new Date(reportDate);
+  const t = new Date();
+  return Math.round((r.getTime() - t.getTime()) / 86400000);
+}
+
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-surface-border bg-surface p-4">
@@ -31,6 +85,7 @@ export default function AdminPage() {
   const [secret, setSecret] = useState("");
   const [authed, setAuthed] = useState(false);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [calibration, setCalibration] = useState<CalibrationData | null>(null);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const [rangeFrom, setRangeFrom] = useState<Date>(() => new Date(Date.now() - 30 * 86400000));
@@ -61,6 +116,18 @@ export default function AdminPage() {
       setStats(data);
       setError("");
       setLastUpdated(new Date().toLocaleTimeString());
+
+      // Fetch calibration in parallel — non-fatal if it fails
+      try {
+        const calRes = await fetch(`${API}/admin/calibration`, {
+          headers: { "X-Admin-Secret": secret },
+        });
+        if (calRes.ok) {
+          setCalibration(await calRes.json());
+        }
+      } catch {
+        // Calibration is optional — don't break the dashboard
+      }
     } catch (e) {
       setError(`Fetch failed: ${e}`);
     }
@@ -289,6 +356,137 @@ export default function AdminPage() {
           <StatCard label="Unsure" value={`${fb.unsure}`} />
         </div>
       </div>
+
+      {/* Section 7: Calibration */}
+      {calibration && (
+        <div>
+          <h2 className="font-heading text-lg text-gold/80 mb-3">Calibration</h2>
+
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="border border-surface-border bg-surface p-4">
+              <div className="font-mono text-[9px] tracking-widest uppercase text-muted mb-1">Predictions</div>
+              <div className="font-heading text-2xl text-gold">{calibration.summary.total_predictions}</div>
+              <div className="font-mono text-[9px] text-muted mt-1">
+                {calibration.summary.pending_future} pending future
+              </div>
+            </div>
+            <div className="border border-surface-border bg-surface p-4">
+              <div className="font-mono text-[9px] tracking-widest uppercase text-muted mb-1">Validated</div>
+              <div className="font-heading text-2xl text-gold">{calibration.summary.validated}</div>
+              <div className="font-mono text-[9px] text-muted mt-1">
+                of {calibration.summary.total_predictions}
+              </div>
+            </div>
+            <div className="border border-surface-border bg-surface p-4">
+              <div className="font-mono text-[9px] tracking-widest uppercase text-muted mb-1">Accuracy</div>
+              <div className="font-heading text-2xl text-gold">
+                {calibration.summary.accuracy_pct !== null ? `${calibration.summary.accuracy_pct}%` : "—"}
+              </div>
+              <div className="font-mono text-[9px] text-muted mt-1">vs 50% random</div>
+            </div>
+            <div className="border border-surface-border bg-surface p-4">
+              <div className="font-mono text-[9px] tracking-widest uppercase text-muted mb-1">Avg Brier</div>
+              <div className={`font-heading text-2xl ${brierColor(calibration.summary.avg_brier_score)}`}>
+                {calibration.summary.avg_brier_score !== null
+                  ? Number(calibration.summary.avg_brier_score).toFixed(4)
+                  : "—"}
+              </div>
+              <div className="font-mono text-[9px] text-muted mt-1">vs 0.25 random</div>
+            </div>
+          </div>
+
+          {/* Pending validation */}
+          <h3 className="font-mono text-[10px] tracking-widest uppercase text-muted mb-2">
+            Pending Validation — Awaiting Report Date
+          </h3>
+          <div className="border border-surface-border bg-surface overflow-x-auto mb-4">
+            <table className="w-full font-mono text-xs">
+              <thead>
+                <tr className="border-b border-surface-border text-muted text-left">
+                  <th className="p-2">Ticker</th>
+                  <th className="p-2">Report Date</th>
+                  <th className="p-2">Days Away</th>
+                  <th className="p-2">P(beat)</th>
+                  <th className="p-2">Verdict</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calibration.pending.length === 0 && (
+                  <tr><td className="p-2 text-muted" colSpan={5}>No pending predictions</td></tr>
+                )}
+                {calibration.pending.map((r, i) => {
+                  const dl = daysFromToday(r.report_date);
+                  return (
+                    <tr key={i} className="border-b border-surface-border/50">
+                      <td className="p-2 text-gold">{r.ticker}</td>
+                      <td className="p-2 text-foreground">{String(r.report_date).slice(0, 10)}</td>
+                      <td className="p-2 text-muted">{dl >= 0 ? `${dl}d` : `${dl}d`}</td>
+                      <td className="p-2 text-foreground">{Number(r.augur_probability).toFixed(3)}</td>
+                      <td className="p-2 text-muted">{r.augur_verdict}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Validated results */}
+          <h3 className="font-mono text-[10px] tracking-widest uppercase text-muted mb-2">
+            Validated Results — Actual Outcomes vs Predictions
+          </h3>
+          <div className="border border-surface-border bg-surface overflow-x-auto">
+            <table className="w-full font-mono text-xs">
+              <thead>
+                <tr className="border-b border-surface-border text-muted text-left">
+                  <th className="p-2">Ticker</th>
+                  <th className="p-2">Date</th>
+                  <th className="p-2">P(beat)</th>
+                  <th className="p-2">Verdict</th>
+                  <th className="p-2">Actual</th>
+                  <th className="p-2">EPS Surprise</th>
+                  <th className="p-2">Brier</th>
+                  <th className="p-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {calibration.validated.length === 0 && (
+                  <tr><td className="p-2 text-muted" colSpan={8}>No validated outcomes yet</td></tr>
+                )}
+                {calibration.validated.map((r, i) => {
+                  const p = Number(r.augur_probability);
+                  const correct = (r.actual_beat && p >= 0.5) || (!r.actual_beat && p < 0.5);
+                  return (
+                    <tr key={i} className="border-b border-surface-border/50">
+                      <td className="p-2 text-gold">{r.ticker}</td>
+                      <td className="p-2 text-muted">{String(r.report_date).slice(0, 10)}</td>
+                      <td className="p-2 text-foreground">{p.toFixed(3)}</td>
+                      <td className="p-2 text-muted">{r.augur_verdict}</td>
+                      <td className={`p-2 ${r.actual_beat ? "text-emerald-400" : "text-red-400"}`}>
+                        {r.actual_beat ? "BEAT" : "MISS"}
+                      </td>
+                      <td className="p-2 text-muted">
+                        {r.eps_surprise_pct !== null ? `${Number(r.eps_surprise_pct).toFixed(2)}%` : "—"}
+                      </td>
+                      <td className={`p-2 ${brierColor(r.brier_score)}`}>
+                        {Number(r.brier_score).toFixed(4)}
+                      </td>
+                      <td className={`p-2 ${correct ? "text-emerald-400" : "text-red-400"}`}>
+                        {correct ? "✓" : "✗"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="font-mono text-[9px] text-muted mt-3 leading-relaxed">
+            Calibration data grows as companies report. First meaningful dataset expected
+            August 2026 (FY reporting season). Brier score baseline: 0.25 = random, 0.0 = perfect.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

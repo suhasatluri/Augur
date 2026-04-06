@@ -246,6 +246,43 @@ CREATE TABLE IF NOT EXISTS director_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_dir_txn_ticker ON director_transactions(ticker);
 
+-- ============================================================
+-- calibration: tracks Augur predictions vs actual outcomes
+-- ============================================================
+CREATE TABLE IF NOT EXISTS calibration (
+    id                  SERIAL PRIMARY KEY,
+    simulation_id       TEXT NOT NULL,
+    ticker              VARCHAR(10) NOT NULL,
+    report_date         DATE NOT NULL,
+    simulated_at        TIMESTAMPTZ NOT NULL,
+    days_before_report  INTEGER,
+
+    -- Augur prediction
+    augur_probability   NUMERIC(5,3) NOT NULL,
+    augur_verdict       VARCHAR(20) NOT NULL,
+
+    -- Actual outcome (filled after report)
+    actual_beat         BOOLEAN,
+    actual_eps          NUMERIC(10,4),
+    consensus_eps       NUMERIC(10,4),
+    eps_surprise_pct    NUMERIC(8,4),
+    result_source       VARCHAR(30),
+    result_verified_at  TIMESTAMPTZ,
+    notes               TEXT,
+
+    -- Scoring (computed after outcome known)
+    brier_score         NUMERIC(8,6),
+
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE(simulation_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_ticker ON calibration(ticker);
+CREATE INDEX IF NOT EXISTS idx_calibration_report_date ON calibration(report_date);
+CREATE INDEX IF NOT EXISTS idx_calibration_outcome_pending ON calibration(report_date)
+    WHERE actual_beat IS NULL;
+
 -- Migration: add seed_data column to existing simulations table
 DO $$
 BEGIN
@@ -326,6 +363,11 @@ BEGIN
             ADD COLUMN confidence VARCHAR(10) DEFAULT 'medium',
             ADD COLUMN raw_date_text TEXT,
             ADD COLUMN last_verified TIMESTAMPTZ;
+    END IF;
+
+    -- Final probability column for calibration tracking
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'simulations' AND column_name = 'final_probability') THEN
+        ALTER TABLE simulations ADD COLUMN final_probability NUMERIC(5,3);
     END IF;
 END $$;
 """
