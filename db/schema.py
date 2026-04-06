@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS simulations (
 CREATE INDEX IF NOT EXISTS idx_simulations_ticker ON simulations(ticker);
 CREATE INDEX IF NOT EXISTS idx_simulations_status ON simulations(status);
 CREATE INDEX IF NOT EXISTS idx_simulations_created_at ON simulations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_simulations_ticker_status ON simulations(ticker, status) WHERE status = 'complete';
 
 -- ============================================================
 -- agents: one row per agent persona in a simulation
