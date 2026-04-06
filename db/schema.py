@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS feedback (
 
 CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feedback_ticker ON feedback(ticker);
+CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback(rating);
 
 -- ============================================================
 -- asic_short_interest: daily short position data from ASIC

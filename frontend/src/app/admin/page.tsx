@@ -63,7 +63,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (authed && secret) {
       fetchStats();
-      const timer = setInterval(fetchStats, 60000);
+      const timer = setInterval(fetchStats, 120_000);
       return () => clearInterval(timer);
     }
   }, [authed, secret, fetchStats]);
@@ -120,6 +120,9 @@ export default function AdminPage() {
         <h1 className="font-heading text-3xl text-gold">Admin Dashboard</h1>
         <div className="font-mono text-[9px] text-muted">
           Last updated: {lastUpdated}
+          {"cached_at" in (stats as object) && (
+            <span className="ml-2">· cached</span>
+          )}
         </div>
       </div>
 
