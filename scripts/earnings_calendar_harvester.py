@@ -218,6 +218,15 @@ async def refresh_earnings_calendar(
     )
     confirmed_tickers = {r["ticker"] for r in confirmed_rows}
 
+    # Skip tickers that already have a recent future entry (resume support)
+    recent_rows = await conn.fetch(
+        """SELECT DISTINCT ticker FROM asx_calendar
+           WHERE expected_reporting_date >= $1
+             AND last_verified > NOW() - INTERVAL '24 hours'""",
+        today,
+    )
+    recent_tickers = {r["ticker"] for r in recent_rows}
+
     # Get company names from asx_companies
     name_rows = await conn.fetch("SELECT ticker, company_name FROM asx_companies")
     known_names = {r["ticker"]: r["company_name"] for r in name_rows}
@@ -228,6 +237,7 @@ async def refresh_earnings_calendar(
         "both_agree": 0,
         "no_data": 0,
         "skipped_confirmed": 0,
+        "skipped_recent": 0,
         "total": len(tickers),
     }
 
@@ -235,6 +245,9 @@ async def refresh_earnings_calendar(
         if ticker in confirmed_tickers:
             stats["skipped_confirmed"] += 1
             logger.info(f"[calendar] {ticker}: confirmed entry — skipping")
+            continue
+        if ticker in recent_tickers:
+            stats["skipped_recent"] += 1
             continue
 
         company_name = known_names.get(ticker, f"{ticker} Ltd")
@@ -292,9 +305,8 @@ async def refresh_earnings_calendar(
             logger.info(f"[calendar] {ticker}: no data from either source")
             continue
 
-        # Upsert — never overwrite confirmed entries
-        await conn.execute(
-            """INSERT INTO asx_calendar
+        # Upsert — never overwrite confirmed entries. Retry once on connection drop.
+        upsert_sql = """INSERT INTO asx_calendar
                 (ticker, expected_reporting_date, result_type, source, confidence, raw_date_text, last_verified)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (ticker, expected_reporting_date)
@@ -304,14 +316,24 @@ async def refresh_earnings_calendar(
                 confidence = EXCLUDED.confidence,
                 raw_date_text = EXCLUDED.raw_date_text,
                 last_verified = NOW()
-            WHERE asx_calendar.confirmed = FALSE""",
-            ticker,
-            final_date,
-            final_type,
-            final_source,
-            final_confidence,
-            raw_text,
-        )
+            WHERE asx_calendar.confirmed = FALSE"""
+        try:
+            await conn.execute(
+                upsert_sql, ticker, final_date, final_type,
+                final_source, final_confidence, raw_text,
+            )
+        except Exception as e:
+            logger.warning(f"[calendar] {ticker}: upsert failed ({e}), reconnecting")
+            try:
+                import asyncpg as _ap
+                await conn.close()
+            except Exception:
+                pass
+            conn = await _ap.connect(os.environ["DATABASE_URL"])
+            await conn.execute(
+                upsert_sql, ticker, final_date, final_type,
+                final_source, final_confidence, raw_text,
+            )
 
         logger.info(f"[calendar] {ticker}: {final_date} ({final_source}, {final_confidence})")
 

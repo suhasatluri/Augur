@@ -30,6 +30,9 @@ export default function NavBar() {
           </span>
         </a>
         <div className="flex items-center gap-5">
+          <a href="/calendar" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
+            Calendar
+          </a>
           <a href="/about" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
             How it works
           </a>

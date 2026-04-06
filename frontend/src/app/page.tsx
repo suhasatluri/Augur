@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import TickerInput from "@/components/TickerInput";
 import VerdictBadge from "@/components/VerdictBadge";
 import EarningsCalendar from "@/components/EarningsCalendar";
@@ -9,13 +9,20 @@ import { startSimulation, getActivity, ActivityItem } from "@/lib/api";
 
 const ACTIVITY_POLL = 60000; // 60s
 
-export default function Home() {
+function HomeInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [ticker, setTicker] = useState("");
   const [reportingDate, setReportingDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+
+  // Pre-fill ticker from URL param (e.g. /?ticker=BHP from /calendar page)
+  useEffect(() => {
+    const t = searchParams.get("ticker");
+    if (t) setTicker(t.toUpperCase());
+  }, [searchParams]);
 
   const fetchActivity = useCallback(() => {
     getActivity().then(setActivity).catch(() => {});
@@ -173,5 +180,13 @@ export default function Home() {
       </div>
 
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense>
+      <HomeInner />
+    </Suspense>
   );
 }

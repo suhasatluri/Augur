@@ -120,18 +120,33 @@ export async function getActivity(
 
 export interface CalendarEntry {
   ticker: string;
-  report_date: string;
+  company: string;
   report_type: string | null;
-  confirmed: boolean;
+  sector: string | null;
   source: string | null;
   confidence: string;
-  company_name: string | null;
-  sector: string | null;
-  last_verified: string | null;
 }
 
-export async function getCalendar(): Promise<CalendarEntry[]> {
-  const res = await fetch(`${API_URL}/calendar`);
-  if (!res.ok) return [];
+export interface CalendarData {
+  calendar: Record<string, CalendarEntry[]>;
+  sectors: string[];
+  total_companies: number;
+  last_updated: string | null;
+  disclaimer: string;
+}
+
+export async function getCalendar(params?: {
+  weeks?: number;
+  sector?: string | null;
+  show_past?: boolean;
+  search?: string;
+}): Promise<CalendarData> {
+  const qs = new URLSearchParams();
+  if (params?.weeks) qs.set("weeks", String(params.weeks));
+  if (params?.sector) qs.set("sector", params.sector);
+  if (params?.show_past) qs.set("show_past", "true");
+  if (params?.search) qs.set("search", params.search);
+  const res = await fetch(`${API_URL}/calendar?${qs}`);
+  if (!res.ok) return { calendar: {}, sectors: [], total_companies: 0, last_updated: null, disclaimer: "" };
   return res.json();
 }

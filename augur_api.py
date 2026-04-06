@@ -17,7 +17,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Request, Response
+from fastapi import FastAPI, HTTPException, Header, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -503,10 +503,21 @@ async def health():
 
 
 @app.get("/calendar")
-async def earnings_calendar():
-    """Upcoming ASX earnings dates. Public — no auth required."""
+async def earnings_calendar(
+    weeks: int = Query(26, ge=1, le=52),
+    sector: Optional[str] = Query(None),
+    show_past: bool = Query(False),
+    search: Optional[str] = Query(None),
+):
+    """Upcoming ASX earnings dates. Public — no auth required.
+
+    Returns entries grouped by date for the full /calendar page.
+    Query params: weeks (default 26), sector filter, show_past (include last 30 days), search (ticker/company).
+    """
     if not os.getenv("DATABASE_URL"):
-        return []
+        return {"calendar": {}, "sectors": [], "total_companies": 0, "last_updated": None, "disclaimer": ""}
+
+    search_pattern = f"%{search}%" if search else None
 
     try:
         pool = await get_pool()
@@ -517,28 +528,55 @@ async def earnings_calendar():
                        a.company_name, a.sector
                 FROM asx_calendar c
                 LEFT JOIN asx_companies a ON c.ticker = a.ticker
-                WHERE c.expected_reporting_date >= CURRENT_DATE
-                ORDER BY c.expected_reporting_date ASC
-                LIMIT 50
+                WHERE (
+                    ($3::boolean = TRUE AND c.expected_reporting_date >= CURRENT_DATE - 30)
+                    OR
+                    ($3::boolean = FALSE AND c.expected_reporting_date >= CURRENT_DATE)
+                )
+                AND c.expected_reporting_date <= CURRENT_DATE + ($1 * 7)
+                AND ($2::text IS NULL OR a.sector = $2)
+                AND ($4::text IS NULL OR c.ticker ILIKE $4 OR a.company_name ILIKE $4)
+                ORDER BY c.expected_reporting_date ASC, c.ticker ASC
+            """, weeks, sector, show_past, search_pattern)
+
+            # Get distinct sectors for filter pills
+            sector_rows = await conn.fetch("""
+                SELECT DISTINCT a.sector FROM asx_calendar c
+                JOIN asx_companies a ON c.ticker = a.ticker
+                WHERE a.sector IS NOT NULL
+                AND c.expected_reporting_date >= CURRENT_DATE
+                ORDER BY a.sector
+            """)
+
+            last_verified = await conn.fetchval("""
+                SELECT MAX(last_verified) FROM asx_calendar
+                WHERE expected_reporting_date >= CURRENT_DATE
             """)
     except Exception as e:
         logger.error(f"[api] Calendar query failed: {e}")
-        return []
+        return {"calendar": {}, "sectors": [], "total_companies": 0, "last_updated": None, "disclaimer": ""}
 
-    return [
-        {
+    # Group by date
+    calendar: dict[str, list[dict]] = {}
+    for r in rows:
+        date_key = r["expected_reporting_date"].isoformat()
+        entry = {
             "ticker": r["ticker"],
-            "report_date": r["expected_reporting_date"].isoformat(),
+            "company": r["company_name"] or f"{r['ticker']} Ltd",
             "report_type": r["result_type"],
-            "confirmed": r["confirmed"],
+            "sector": r["sector"],
             "source": r["source"],
             "confidence": r["confidence"] or "medium",
-            "company_name": r["company_name"],
-            "sector": r["sector"],
-            "last_verified": r["last_verified"].isoformat() if r["last_verified"] else None,
         }
-        for r in rows
-    ]
+        calendar.setdefault(date_key, []).append(entry)
+
+    return {
+        "calendar": calendar,
+        "sectors": [r["sector"] for r in sector_rows],
+        "total_companies": len(rows),
+        "last_updated": last_verified.isoformat() if last_verified else None,
+        "disclaimer": "Dates are sourced from Yahoo Finance and Perplexity Sonar. Always verify with the company's official ASX announcement.",
+    }
 
 
 # ---------------------------------------------------------------------------
