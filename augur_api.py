@@ -502,87 +502,99 @@ async def health():
 # ---------------------------------------------------------------------------
 
 _ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
-_admin_cache: dict = {"data": None, "expires_at": 0.0}
-
-_SQL_TOTALS = """
-    SELECT COUNT(*) AS total_simulations,
-           COUNT(DISTINCT ticker) AS unique_tickers,
-           COALESCE(SUM(estimated_cost_usd), 0) AS total_cost_usd,
-           COALESCE(SUM(input_tokens_sonnet + output_tokens_sonnet), 0) AS total_sonnet_tokens,
-           COALESCE(SUM(input_tokens_haiku + output_tokens_haiku), 0) AS total_haiku_tokens,
-           COALESCE(AVG(duration_seconds), 0) AS avg_duration_s,
-           COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost_usd,
-           COALESCE(AVG(seed_quality), 0) AS avg_seed_quality,
-           COUNT(*) FILTER (WHERE status = 'complete') AS completed,
-           COUNT(*) FILTER (WHERE status = 'failed') AS failed
-    FROM simulations"""
-_SQL_DAILY = """
-    SELECT DATE(created_at) AS date, COUNT(*) AS simulations,
-           COALESCE(SUM(estimated_cost_usd), 0) AS cost_usd
-    FROM simulations WHERE created_at > NOW() - INTERVAL '30 days'
-    GROUP BY DATE(created_at) ORDER BY date DESC"""
-_SQL_TOP_TICKERS = """
-    SELECT ticker, COUNT(*) AS simulations,
-           COALESCE(SUM(estimated_cost_usd), 0) AS total_cost,
-           COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost,
-           COALESCE(AVG(seed_quality), 0) AS avg_quality,
-           MAX(created_at) AS last_run
-    FROM simulations WHERE status = 'complete'
-    GROUP BY ticker ORDER BY simulations DESC LIMIT 20"""
-_SQL_TOKENS = """
-    SELECT COALESCE(SUM(input_tokens_sonnet), 0) AS sonnet_in,
-           COALESCE(SUM(output_tokens_sonnet), 0) AS sonnet_out,
-           COALESCE(SUM(input_tokens_haiku), 0) AS haiku_in,
-           COALESCE(SUM(output_tokens_haiku), 0) AS haiku_out
-    FROM simulations"""
-_SQL_RECENT = """
-    SELECT ticker, status, estimated_cost_usd,
-           COALESCE(input_tokens_sonnet, 0) + COALESCE(output_tokens_sonnet, 0) AS sonnet_tokens,
-           COALESCE(input_tokens_haiku, 0) + COALESCE(output_tokens_haiku, 0) AS haiku_tokens,
-           duration_seconds, seed_quality, convergence_score, rounds_completed, created_at
-    FROM simulations ORDER BY created_at DESC LIMIT 50"""
-_SQL_FEEDBACK = """
-    SELECT COUNT(*) AS total,
-           COUNT(*) FILTER (WHERE rating = 'positive') AS positive,
-           COUNT(*) FILTER (WHERE rating = 'negative') AS negative,
-           COUNT(*) FILTER (WHERE rating = 'neutral') AS unsure
-    FROM feedback"""
+_admin_cache: dict[str, dict] = {}  # keyed by from_ts+to_ts
 
 
 @app.get("/admin/stats")
-async def admin_stats(x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret")):
-    """Protected admin stats endpoint. 60s in-memory cache, parallel queries."""
+async def admin_stats(
+    x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret"),
+    from_ts: Optional[str] = None,
+    to_ts: Optional[str] = None,
+):
+    """Protected admin stats. Accepts ISO timestamps for time range filtering. 60s cache per range."""
     if not _ADMIN_SECRET or x_admin_secret != _ADMIN_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # Cache check
-    now = time.monotonic()
-    if _admin_cache["data"] is not None and now < _admin_cache["expires_at"]:
-        return _admin_cache["data"]
-
+    from datetime import timezone, timedelta
     import decimal
+
+    # Parse time range — default last 30 days
+    try:
+        dt_from = datetime.fromisoformat(from_ts) if from_ts else datetime.now(timezone.utc) - timedelta(days=30)
+        dt_to = datetime.fromisoformat(to_ts) if to_ts else datetime.now(timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid timestamp format. Use ISO 8601.")
+
+    # Ensure timezone-aware
+    if dt_from.tzinfo is None:
+        dt_from = dt_from.replace(tzinfo=timezone.utc)
+    if dt_to.tzinfo is None:
+        dt_to = dt_to.replace(tzinfo=timezone.utc)
+
+    # Cache check (per range key, 60s TTL)
+    cache_key = f"{dt_from.isoformat()}_{dt_to.isoformat()}"
+    cached = _admin_cache.get(cache_key)
+    if cached and time.monotonic() < cached.get("_expires", 0):
+        return cached["data"]
 
     def _row(row):
         return {k: (float(v) if isinstance(v, decimal.Decimal) else str(v) if hasattr(v, "isoformat") else v) for k, v in dict(row).items()}
 
-    # Parallel queries via separate pool connections
     pool = await get_pool()
 
-    async def _fetchrow(sql):
+    async def _fetchrow(sql, *args):
         async with pool.acquire() as c:
-            return await c.fetchrow(sql)
+            return await c.fetchrow(sql, *args)
 
-    async def _fetch(sql):
+    async def _fetch(sql, *args):
         async with pool.acquire() as c:
-            return await c.fetch(sql)
+            return await c.fetch(sql, *args)
 
+    # Date-filtered queries use $1/$2 params; tokens/recent/feedback are global
     totals, daily, top_tickers, token_breakdown, recent, feedback = await asyncio.gather(
-        _fetchrow(_SQL_TOTALS),
-        _fetch(_SQL_DAILY),
-        _fetch(_SQL_TOP_TICKERS),
-        _fetchrow(_SQL_TOKENS),
-        _fetch(_SQL_RECENT),
-        _fetchrow(_SQL_FEEDBACK),
+        _fetchrow("""
+            SELECT COUNT(*) AS total_simulations, COUNT(DISTINCT ticker) AS unique_tickers,
+                   COALESCE(SUM(estimated_cost_usd), 0) AS total_cost_usd,
+                   COALESCE(SUM(input_tokens_sonnet + output_tokens_sonnet), 0) AS total_sonnet_tokens,
+                   COALESCE(SUM(input_tokens_haiku + output_tokens_haiku), 0) AS total_haiku_tokens,
+                   COALESCE(AVG(duration_seconds), 0) AS avg_duration_s,
+                   COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost_usd,
+                   COALESCE(AVG(seed_quality), 0) AS avg_seed_quality,
+                   COUNT(*) FILTER (WHERE status = 'complete') AS completed,
+                   COUNT(*) FILTER (WHERE status = 'failed') AS failed
+            FROM simulations WHERE created_at >= $1 AND created_at <= $2""", dt_from, dt_to),
+        _fetch("""
+            SELECT DATE(created_at) AS date, COUNT(*) AS simulations,
+                   COALESCE(SUM(estimated_cost_usd), 0) AS cost_usd
+            FROM simulations WHERE created_at >= $1 AND created_at <= $2
+            GROUP BY DATE(created_at) ORDER BY date DESC""", dt_from, dt_to),
+        _fetch("""
+            SELECT ticker, COUNT(*) AS simulations,
+                   COALESCE(SUM(estimated_cost_usd), 0) AS total_cost,
+                   COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost,
+                   COALESCE(AVG(seed_quality), 0) AS avg_quality,
+                   MAX(created_at) AS last_run
+            FROM simulations WHERE status = 'complete' AND created_at >= $1 AND created_at <= $2
+            GROUP BY ticker ORDER BY simulations DESC LIMIT 20""", dt_from, dt_to),
+        _fetchrow("""
+            SELECT COALESCE(SUM(input_tokens_sonnet), 0) AS sonnet_in,
+                   COALESCE(SUM(output_tokens_sonnet), 0) AS sonnet_out,
+                   COALESCE(SUM(input_tokens_haiku), 0) AS haiku_in,
+                   COALESCE(SUM(output_tokens_haiku), 0) AS haiku_out
+            FROM simulations WHERE created_at >= $1 AND created_at <= $2""", dt_from, dt_to),
+        _fetch("""
+            SELECT ticker, status, estimated_cost_usd,
+                   COALESCE(input_tokens_sonnet, 0) + COALESCE(output_tokens_sonnet, 0) AS sonnet_tokens,
+                   COALESCE(input_tokens_haiku, 0) + COALESCE(output_tokens_haiku, 0) AS haiku_tokens,
+                   duration_seconds, seed_quality, convergence_score, rounds_completed, created_at
+            FROM simulations WHERE created_at >= $1 AND created_at <= $2
+            ORDER BY created_at DESC LIMIT 50""", dt_from, dt_to),
+        _fetchrow("""
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE rating = 'positive') AS positive,
+                   COUNT(*) FILTER (WHERE rating = 'negative') AS negative,
+                   COUNT(*) FILTER (WHERE rating = 'neutral') AS unsure
+            FROM feedback"""),
     )
 
     response = {
@@ -592,9 +604,14 @@ async def admin_stats(x_admin_secret: Optional[str] = Header(None, alias="X-Admi
         "top_tickers": [_row(r) for r in top_tickers],
         "recent": [_row(r) for r in recent],
         "feedback": _row(feedback),
+        "range": {"from": dt_from.isoformat(), "to": dt_to.isoformat()},
         "cached_at": datetime.utcnow().isoformat(),
     }
 
-    _admin_cache["data"] = response
-    _admin_cache["expires_at"] = time.monotonic() + 60.0
+    _admin_cache[cache_key] = {"data": response, "_expires": time.monotonic() + 60.0}
+    # Prune old cache entries
+    if len(_admin_cache) > 20:
+        oldest = min(_admin_cache, key=lambda k: _admin_cache[k].get("_expires", 0))
+        _admin_cache.pop(oldest, None)
+
     return response

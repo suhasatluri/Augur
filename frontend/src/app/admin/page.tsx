@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import TimeRangePicker from "@/components/TimeRangePicker";
 
 const API =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -13,6 +14,8 @@ interface Stats {
   top_tickers: Record<string, unknown>[];
   recent: Record<string, unknown>[];
   feedback: Record<string, number>;
+  cached_at?: string;
+  range?: { from: string; to: string };
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -30,6 +33,8 @@ export default function AdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
+  const [rangeFrom, setRangeFrom] = useState<Date>(() => new Date(Date.now() - 30 * 86400000));
+  const [rangeTo, setRangeTo] = useState<Date>(() => new Date());
 
   useEffect(() => {
     const saved = sessionStorage.getItem("augur_admin_secret");
@@ -42,9 +47,10 @@ export default function AdminPage() {
   const fetchStats = useCallback(async () => {
     if (!secret) return;
     try {
-      const res = await fetch(`${API}/admin/stats`, {
-        headers: { "X-Admin-Secret": secret },
-      });
+      const fromIso = rangeFrom.toISOString();
+      const toIso = rangeTo.toISOString();
+      const url = `${API}/admin/stats?from_ts=${encodeURIComponent(fromIso)}&to_ts=${encodeURIComponent(toIso)}`;
+      const res = await fetch(url, { headers: { "X-Admin-Secret": secret } });
       if (res.status === 401) {
         setError("Invalid admin secret");
         setAuthed(false);
@@ -58,7 +64,7 @@ export default function AdminPage() {
     } catch (e) {
       setError(`Fetch failed: ${e}`);
     }
-  }, [secret]);
+  }, [secret, rangeFrom, rangeTo]);
 
   useEffect(() => {
     if (authed && secret) {
@@ -74,6 +80,13 @@ export default function AdminPage() {
     setAuthed(true);
   }
 
+  function handleLogout() {
+    sessionStorage.removeItem("augur_admin_secret");
+    setSecret("");
+    setAuthed(false);
+    setStats(null);
+  }
+
   if (!authed) {
     return (
       <div className="max-w-sm mx-auto mt-32 space-y-4">
@@ -86,10 +99,7 @@ export default function AdminPage() {
           placeholder="Admin secret"
           className="w-full bg-surface border border-surface-border text-foreground font-mono text-sm p-3 outline-none focus:border-gold/50"
         />
-        <button
-          onClick={handleLogin}
-          className="w-full bg-gold text-background font-mono text-sm tracking-wider py-3 hover:bg-gold-light transition"
-        >
+        <button onClick={handleLogin} className="w-full bg-gold text-background font-mono text-sm tracking-wider py-3 hover:bg-gold-light transition">
           Authenticate
         </button>
         {error && <p className="text-red-400 text-xs font-mono text-center">{error}</p>}
@@ -108,21 +118,34 @@ export default function AdminPage() {
   const t = stats.totals;
   const tb = stats.token_breakdown;
   const fb = stats.feedback;
-  const sonnetCost =
-    ((tb.sonnet_in || 0) / 1e6) * 3.0 + ((tb.sonnet_out || 0) / 1e6) * 15.0;
-  const haikuCost =
-    ((tb.haiku_in || 0) / 1e6) * 0.25 + ((tb.haiku_out || 0) / 1e6) * 1.25;
+  const sonnetCost = ((tb.sonnet_in || 0) / 1e6) * 3.0 + ((tb.sonnet_out || 0) / 1e6) * 15.0;
+  const haikuCost = ((tb.haiku_in || 0) / 1e6) * 0.25 + ((tb.haiku_out || 0) / 1e6) * 1.25;
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-3xl text-gold">Admin Dashboard</h1>
-        <div className="font-mono text-[9px] text-muted">
-          Last updated: {lastUpdated}
-          {"cached_at" in (stats as object) && (
-            <span className="ml-2">· cached</span>
-          )}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-heading text-3xl text-gold">Admin Dashboard</h1>
+          <div className="font-mono text-[9px] text-muted mt-0.5">
+            Last updated: {lastUpdated}
+            {stats.cached_at && <span className="ml-2">· cached</span>}
+            {" · "}
+            <button onClick={fetchStats} className="hover:text-gold transition">refresh</button>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <TimeRangePicker
+            from={rangeFrom}
+            to={rangeTo}
+            onChange={(f, t) => { setRangeFrom(f); setRangeTo(t); }}
+          />
+          <button
+            onClick={handleLogout}
+            className="font-mono text-[9px] tracking-widest uppercase text-muted hover:text-red-400 border border-transparent hover:border-red-400/30 px-2.5 py-1.5 transition"
+          >
+            Log out
+          </button>
         </div>
       </div>
 
@@ -133,7 +156,6 @@ export default function AdminPage() {
         <StatCard label="Avg Cost / Sim" value={`$${Number(t.avg_cost_usd).toFixed(2)}`} />
         <StatCard label="Avg Duration" value={`${Math.round(Number(t.avg_duration_s))}s`} />
       </div>
-
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Unique Tickers" value={`${t.unique_tickers}`} />
         <StatCard label="Completed" value={`${t.completed}`} />
@@ -166,14 +188,12 @@ export default function AdminPage() {
 
       {/* Section 3: Daily activity */}
       <div>
-        <h2 className="font-heading text-lg text-gold/80 mb-3">Daily Activity (30d)</h2>
+        <h2 className="font-heading text-lg text-gold/80 mb-3">Daily Activity</h2>
         <div className="border border-surface-border bg-surface overflow-hidden">
           <table className="w-full font-mono text-xs">
             <thead>
               <tr className="border-b border-surface-border text-muted text-left">
-                <th className="p-2">Date</th>
-                <th className="p-2">Sims</th>
-                <th className="p-2">Cost</th>
+                <th className="p-2">Date</th><th className="p-2">Sims</th><th className="p-2">Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -196,12 +216,8 @@ export default function AdminPage() {
           <table className="w-full font-mono text-xs">
             <thead>
               <tr className="border-b border-surface-border text-muted text-left">
-                <th className="p-2">Ticker</th>
-                <th className="p-2">Sims</th>
-                <th className="p-2">Total Cost</th>
-                <th className="p-2">Avg Cost</th>
-                <th className="p-2">Avg Quality</th>
-                <th className="p-2">Last Run</th>
+                <th className="p-2">Ticker</th><th className="p-2">Sims</th><th className="p-2">Total Cost</th>
+                <th className="p-2">Avg Cost</th><th className="p-2">Avg Quality</th><th className="p-2">Last Run</th>
               </tr>
             </thead>
             <tbody>
@@ -227,24 +243,16 @@ export default function AdminPage() {
           <table className="w-full font-mono text-xs">
             <thead>
               <tr className="border-b border-surface-border text-muted text-left">
-                <th className="p-2">Ticker</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Cost</th>
-                <th className="p-2">Sonnet</th>
-                <th className="p-2">Haiku</th>
-                <th className="p-2">Duration</th>
-                <th className="p-2">Quality</th>
-                <th className="p-2">Conv.</th>
-                <th className="p-2">Time</th>
+                <th className="p-2">Ticker</th><th className="p-2">Status</th><th className="p-2">Cost</th>
+                <th className="p-2">Sonnet</th><th className="p-2">Haiku</th><th className="p-2">Duration</th>
+                <th className="p-2">Quality</th><th className="p-2">Conv.</th><th className="p-2">Time</th>
               </tr>
             </thead>
             <tbody>
               {stats.recent.map((r, i) => (
                 <tr key={i} className="border-b border-surface-border/50">
                   <td className="p-2 text-gold">{String(r.ticker)}</td>
-                  <td className={`p-2 ${r.status === "complete" ? "text-emerald-400" : r.status === "failed" ? "text-red-400" : "text-muted"}`}>
-                    {String(r.status)}
-                  </td>
+                  <td className={`p-2 ${r.status === "complete" ? "text-emerald-400" : r.status === "failed" ? "text-red-400" : "text-muted"}`}>{String(r.status)}</td>
                   <td className="p-2 text-muted">${Number(r.estimated_cost_usd || 0).toFixed(2)}</td>
                   <td className="p-2 text-muted">{Number(r.sonnet_tokens || 0).toLocaleString()}</td>
                   <td className="p-2 text-muted">{Number(r.haiku_tokens || 0).toLocaleString()}</td>
