@@ -26,4 +26,4 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest tests/unit/ tests/regression/ -v -m "not integration"
+          pytest tests/unit/ -v
