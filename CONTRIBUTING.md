@@ -59,7 +59,7 @@ augur/
 │   ├── schema.py                   # Neon schema (13 tables, 10+ indexes, token cost tracking)
 │   └── retention.py                # Retention policy (7d failed, 24h batch)
 ├── frontend/                       # Next.js 14 App Router
-│   ├── src/app/                    # Pages (/, /about, /simulation/[jobId], /admin)
+│   ├── src/app/                    # Pages (/, /about, /calendar, /simulation/[jobId], /admin)
 │   ├── sentry.client.config.ts     # Sentry frontend error tracking
 │   └── sentry.server.config.ts     # Sentry server-side error tracking
 ├── docs/

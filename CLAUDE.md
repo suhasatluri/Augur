@@ -52,7 +52,8 @@ prediction_synthesiser → verdict + swing factors → Neon
 - tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
 - frontend/src/app/ — Next.js App Router pages
 - frontend/src/app/admin/page.tsx — Admin dashboard (token costs incl. Perplexity, daily activity, top tickers, feedback stats)
-- frontend/src/components/EarningsCalendar.tsx — Upcoming earnings on homepage with confidence dots
+- frontend/src/components/EarningsCalendar.tsx — Upcoming earnings widget (5 entries, "View all" link to /calendar)
+- frontend/src/app/calendar/page.tsx — Full /calendar page (search, sector filter, week grouping, Simulate deep-links)
 - frontend/sentry.client.config.ts — Sentry frontend error tracking
 - frontend/sentry.server.config.ts — Sentry server-side error tracking
 - frontend/public/about.html — Full explainer page (How It Works) with embedded video
@@ -99,7 +100,7 @@ NEXT_PUBLIC_API_URL — Backend API URL
 - Parallel persona forge via asyncio.gather() — all 50 agents forged simultaneously (5 archetypes x 10 agents, one Sonnet call each), saving ~25-30s per simulation
 - 6-hour seed cache — if ticker simulated in last 6hr, return cached seed from Neon (seed_data JSONB). Cache key is ticker only. Skips cache if seed quality < 0.6. BHP cache HIT confirmed at 124.5s vs 182s baseline
 - Phase 3 complete — target duration now 125-180s depending on cache HIT or MISS
-- Earnings calendar dual-source: yfinance primary (free, structured), Perplexity gap-fills where yfinance returns nothing. Top 15 large caps cross-checked by both. Both agree within 7 days → confidence=high. Never overwrites confirmed/manual entries. Cost ~$0.20/week
+- Earnings calendar dual-source: yfinance primary (free, structured), Perplexity gap-fills where yfinance returns nothing. Top 15 large caps cross-checked by both. Both agree within 7 days → confidence=high. Never overwrites confirmed/manual entries. Harvester has 24h skip-recent TTL (resume support), per-call Perplexity timeout=8s, per-ticker asyncio.wait_for(15s) to prevent hangs. Cost ~$0.20/week. Current state: 141 future records (Apr–Aug 2026 reporting season), 11 sectors populated via yfinance backfill into asx_companies
 - Perplexity cost tracking: module-level session accumulator in perplexity_harvester.py, reset per simulation. $0.005 flat + $1/M tokens input + $1/M tokens output
 
 ## Current Known Limitations
@@ -165,6 +166,7 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - /about — Full explainer page (How It Works, embedded video from GitHub Pages CDN)
 - /simulation/[jobId] — Simulation progress + results
 - /admin — Admin dashboard (login via ADMIN_SECRET, Grafana-style time range picker, token cost breakdown incl. Perplexity Sonar, daily activity, top tickers, recent simulations, feedback stats)
+- /calendar — Full ASX earnings calendar (search, sector pills, week-grouped, Simulate button → /?ticker=XYZ&date=YYYY-MM-DD deep-link to homepage)
 - Explainer video: https://suhasatluri.github.io/Augur/Augur__The_Power_of_a_Debate.mp4
 - GitHub Pages explainer: https://suhasatluri.github.io/Augur/Augur_Explainer.html
 

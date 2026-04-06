@@ -86,7 +86,7 @@ yfinance ──→ current prices ─┤
 - **prediction_synthesiser/** — final verdict with confidence intervals and moderator-identified swing factors
 - **scripts/** — earnings calendar harvester (dual-source: yfinance + Perplexity, confidence scoring)
 - **admin dashboard** — protected `/admin` page with token cost breakdown (Sonnet/Haiku/Perplexity), daily activity, top tickers, recent simulations, feedback stats, Grafana-style time range picker
-- **earnings calendar** — `/calendar` API + homepage component with confidence dots (green=multi-source, amber=single-source, red=estimated)
+- **earnings calendar** — `/calendar` API + homepage widget + full `/calendar` page with search, sector filter, week-grouped season view. ~141 future ASX 200 reports populated; Simulate button deep-links to homepage with ticker + date pre-filled (`/?ticker=ORG&date=2026-04-10`). Confidence dots (green=multi-source, amber=single-source, red=estimated)
 
 ## Licence
 BSL 1.1 — free for non-commercial use.
