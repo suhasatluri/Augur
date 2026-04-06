@@ -15,6 +15,7 @@ from persona_forge.models import ForgeRequest
 from negotiation_runner.runner import NegotiationRunner
 from prediction_synthesiser.synthesiser import PredictionSynthesiser
 from prediction_synthesiser.models import PredictionReport
+from seed_harvester.perplexity_harvester import reset_session_usage, get_session_usage
 
 try:
     import sentry_sdk
@@ -160,6 +161,7 @@ async def _run_pipeline_inner(
 ) -> PredictionReport:
     start = time.monotonic()
     pool = await get_pool()
+    reset_session_usage()
 
     if sentry_sdk:
         sentry_sdk.set_tag("ticker", ticker)
@@ -263,20 +265,25 @@ async def _run_pipeline_inner(
     # Write token tracking + quality metrics
     try:
         tokens = runner.token_summary
+        px_usage = get_session_usage()
         async with pool.acquire() as conn:
             await conn.execute(
                 """UPDATE simulations SET
                     input_tokens_sonnet = $1, output_tokens_sonnet = $2,
                     input_tokens_haiku = $3, output_tokens_haiku = $4,
                     estimated_cost_usd = $5, convergence_score = $6,
-                    duration_seconds = $7, rounds_completed = $8
-                WHERE id = $9""",
+                    duration_seconds = $7, rounds_completed = $8,
+                    perplexity_requests = $9, perplexity_prompt_tokens = $10,
+                    perplexity_completion_tokens = $11, perplexity_cost_usd = $12
+                WHERE id = $13""",
                 tokens["sonnet_input"], tokens["sonnet_output"],
                 tokens["haiku_input"], tokens["haiku_output"],
                 tokens["estimated_cost_usd"],
                 neg_result.convergence_score,
                 int(elapsed / 1000),
                 neg_result.rounds_completed,
+                px_usage["requests"], px_usage["prompt_tokens"],
+                px_usage["completion_tokens"], px_usage["cost_usd"],
                 simulation_id,
             )
     except Exception as e:

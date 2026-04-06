@@ -120,6 +120,7 @@ export default function AdminPage() {
   const fb = stats.feedback;
   const sonnetCost = ((tb.sonnet_in || 0) / 1e6) * 3.0 + ((tb.sonnet_out || 0) / 1e6) * 15.0;
   const haikuCost = ((tb.haiku_in || 0) / 1e6) * 0.25 + ((tb.haiku_out || 0) / 1e6) * 1.25;
+  const perplexityCost = Number(tb.perplexity_cost_usd || 0);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
@@ -152,7 +153,7 @@ export default function AdminPage() {
       {/* Section 1: Headline metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total Simulations" value={`${t.total_simulations}`} />
-        <StatCard label="Total Cost" value={`$${Number(t.total_cost_usd).toFixed(2)}`} />
+        <StatCard label="Total Cost (incl. Perplexity)" value={`$${Number(t.total_cost_usd).toFixed(2)}`} />
         <StatCard label="Avg Cost / Sim" value={`$${Number(t.avg_cost_usd).toFixed(2)}`} />
         <StatCard label="Avg Duration" value={`${Math.round(Number(t.avg_duration_s))}s`} />
       </div>
@@ -166,7 +167,7 @@ export default function AdminPage() {
       {/* Section 2: Token breakdown */}
       <div>
         <h2 className="font-heading text-lg text-gold/80 mb-3">Token Breakdown</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="border border-surface-border bg-surface p-4">
             <div className="font-mono text-[9px] tracking-widest uppercase text-gold mb-2">Sonnet</div>
             <div className="font-mono text-xs text-muted space-y-1">
@@ -181,6 +182,16 @@ export default function AdminPage() {
               <div>Input: {((tb.haiku_in || 0) / 1e6).toFixed(2)}M tokens</div>
               <div>Output: {((tb.haiku_out || 0) / 1e6).toFixed(2)}M tokens</div>
               <div className="text-gold">Cost: ${haikuCost.toFixed(2)}</div>
+            </div>
+          </div>
+          <div className="border border-surface-border bg-surface p-4">
+            <div className="font-mono text-[9px] tracking-widest uppercase text-[#7B9E6B] mb-2">Perplexity Sonar</div>
+            <div className="font-mono text-xs text-muted space-y-1">
+              <div>Requests: <span className="text-foreground">{Number(tb.perplexity_requests || 0).toLocaleString()}</span></div>
+              <div>Prompt: <span className="text-foreground">{Number(tb.perplexity_prompt_tokens || 0).toLocaleString()}</span> tokens</div>
+              <div>Completion: <span className="text-foreground">{Number(tb.perplexity_completion_tokens || 0).toLocaleString()}</span> tokens</div>
+              <div className="text-gold">Cost: ${perplexityCost.toFixed(4)}</div>
+              <div className="text-[9px] text-muted/60">$1/M tokens + $0.005/request</div>
             </div>
           </div>
         </div>
@@ -244,7 +255,7 @@ export default function AdminPage() {
             <thead>
               <tr className="border-b border-surface-border text-muted text-left">
                 <th className="p-2">Ticker</th><th className="p-2">Status</th><th className="p-2">Cost</th>
-                <th className="p-2">Sonnet</th><th className="p-2">Haiku</th><th className="p-2">Duration</th>
+                <th className="p-2">Sonnet</th><th className="p-2">Haiku</th><th className="p-2">Pplx</th><th className="p-2">Duration</th>
                 <th className="p-2">Quality</th><th className="p-2">Conv.</th><th className="p-2">Time</th>
               </tr>
             </thead>
@@ -256,6 +267,7 @@ export default function AdminPage() {
                   <td className="p-2 text-muted">${Number(r.estimated_cost_usd || 0).toFixed(2)}</td>
                   <td className="p-2 text-muted">{Number(r.sonnet_tokens || 0).toLocaleString()}</td>
                   <td className="p-2 text-muted">{Number(r.haiku_tokens || 0).toLocaleString()}</td>
+                  <td className="p-2 text-muted">{Number(r.perplexity_cost || 0) > 0 ? `$${Number(r.perplexity_cost).toFixed(4)}` : "—"}</td>
                   <td className="p-2 text-muted">{r.duration_seconds ? `${r.duration_seconds}s` : "—"}</td>
                   <td className="p-2 text-muted">{r.seed_quality ? Number(r.seed_quality).toFixed(2) : "—"}</td>
                   <td className="p-2 text-muted">{r.convergence_score ? Number(r.convergence_score).toFixed(3) : "—"}</td>

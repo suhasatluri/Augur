@@ -45,11 +45,12 @@ prediction_synthesiser → verdict + swing factors → Neon
 - negotiation_runner/runner.py — 3-round debate
 - prediction_synthesiser/synthesiser.py — final report
 - negotiation_runner/moderator.py — structural moderator between debate rounds (Haiku)
-- db/schema.py — Neon PostgreSQL schema (13 tables, 10+ indexes, CASCADE deletes, seed_data JSONB, market signal columns)
+- db/schema.py — Neon PostgreSQL schema (13 tables, 10+ indexes, CASCADE deletes, seed_data JSONB, market signal columns, token cost tracking)
 - db/retention.py — retention policy (7d failed, 24h batch, reasoning compression)
 - conftest.py — pytest root path setup
 - tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
 - frontend/src/app/ — Next.js App Router pages
+- frontend/src/app/admin/page.tsx — Admin dashboard (token costs, daily activity, top tickers, feedback stats)
 - frontend/sentry.client.config.ts — Sentry frontend error tracking
 - frontend/sentry.server.config.ts — Sentry server-side error tracking
 - frontend/public/about.html — Full explainer page (How It Works) with embedded video
@@ -75,6 +76,7 @@ STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
 PERPLEXITY_API_KEY — Perplexity Sonar (real-time financial news in fast layer, ~$0.005/query)
 SENTRY_DSN_BACKEND — Sentry error tracking DSN (Railway)
+ADMIN_SECRET — protects /admin/stats endpoint (X-Admin-Secret header)
 FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
 
 ### Frontend Environment Variables (Vercel)
@@ -152,6 +154,7 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - / — Homepage (simulation form, community activity, video teaser)
 - /about — Full explainer page (How It Works, embedded video from GitHub Pages CDN)
 - /simulation/[jobId] — Simulation progress + results
+- /admin — Admin dashboard (login via ADMIN_SECRET, Grafana-style time range picker, token cost breakdown, daily activity, top tickers, recent simulations, feedback stats)
 - Explainer video: https://suhasatluri.github.io/Augur/Augur__The_Power_of_a_Debate.mp4
 - GitHub Pages explainer: https://suhasatluri.github.io/Augur/Augur_Explainer.html
 
@@ -161,7 +164,8 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 3. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
 4. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
 5. ~~ASX 100 bootstrap~~ — DONE (ASIC 89/100, Market Index 100/100, director signals for all)
-6. Outcome tracking (outcomes table exists, needs ingestion)
-7. User accounts + simulation history
-8. Schedule weekly asx_scraper refresh via GitHub Actions cron
-9. Email alerts for upcoming earnings
+6. ~~Admin dashboard + token cost tracking~~ — DONE (GET /admin/stats, Grafana-style time picker, parallel queries + 60s cache)
+7. Outcome tracking (outcomes table exists, needs ingestion)
+8. User accounts + simulation history
+9. Schedule weekly asx_scraper refresh via GitHub Actions cron
+10. Email alerts for upcoming earnings

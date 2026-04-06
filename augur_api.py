@@ -554,11 +554,11 @@ async def admin_stats(
     totals, daily, top_tickers, token_breakdown, recent, feedback = await asyncio.gather(
         _fetchrow("""
             SELECT COUNT(*) AS total_simulations, COUNT(DISTINCT ticker) AS unique_tickers,
-                   COALESCE(SUM(estimated_cost_usd), 0) AS total_cost_usd,
+                   COALESCE(SUM(estimated_cost_usd), 0) + COALESCE(SUM(perplexity_cost_usd), 0) AS total_cost_usd,
                    COALESCE(SUM(input_tokens_sonnet + output_tokens_sonnet), 0) AS total_sonnet_tokens,
                    COALESCE(SUM(input_tokens_haiku + output_tokens_haiku), 0) AS total_haiku_tokens,
                    COALESCE(AVG(duration_seconds), 0) AS avg_duration_s,
-                   COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost_usd,
+                   COALESCE(AVG(estimated_cost_usd + COALESCE(perplexity_cost_usd, 0)), 0) AS avg_cost_usd,
                    COALESCE(AVG(seed_quality), 0) AS avg_seed_quality,
                    COUNT(*) FILTER (WHERE status = 'complete') AS completed,
                    COUNT(*) FILTER (WHERE status = 'failed') AS failed
@@ -580,12 +580,17 @@ async def admin_stats(
             SELECT COALESCE(SUM(input_tokens_sonnet), 0) AS sonnet_in,
                    COALESCE(SUM(output_tokens_sonnet), 0) AS sonnet_out,
                    COALESCE(SUM(input_tokens_haiku), 0) AS haiku_in,
-                   COALESCE(SUM(output_tokens_haiku), 0) AS haiku_out
+                   COALESCE(SUM(output_tokens_haiku), 0) AS haiku_out,
+                   COALESCE(SUM(perplexity_requests), 0) AS perplexity_requests,
+                   COALESCE(SUM(perplexity_prompt_tokens), 0) AS perplexity_prompt_tokens,
+                   COALESCE(SUM(perplexity_completion_tokens), 0) AS perplexity_completion_tokens,
+                   COALESCE(SUM(perplexity_cost_usd), 0) AS perplexity_cost_usd
             FROM simulations WHERE created_at >= $1 AND created_at <= $2""", dt_from, dt_to),
         _fetch("""
             SELECT ticker, status, estimated_cost_usd,
                    COALESCE(input_tokens_sonnet, 0) + COALESCE(output_tokens_sonnet, 0) AS sonnet_tokens,
                    COALESCE(input_tokens_haiku, 0) + COALESCE(output_tokens_haiku, 0) AS haiku_tokens,
+                   COALESCE(perplexity_cost_usd, 0) AS perplexity_cost,
                    duration_seconds, seed_quality, convergence_score, rounds_completed, created_at
             FROM simulations WHERE created_at >= $1 AND created_at <= $2
             ORDER BY created_at DESC LIMIT 50""", dt_from, dt_to),

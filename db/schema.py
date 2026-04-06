@@ -270,6 +270,15 @@ BEGIN
             ADD COLUMN rounds_completed INTEGER;
     END IF;
 
+    -- Perplexity cost tracking columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'simulations' AND column_name = 'perplexity_requests') THEN
+        ALTER TABLE simulations
+            ADD COLUMN perplexity_requests INTEGER DEFAULT 0,
+            ADD COLUMN perplexity_prompt_tokens INTEGER DEFAULT 0,
+            ADD COLUMN perplexity_completion_tokens INTEGER DEFAULT 0,
+            ADD COLUMN perplexity_cost_usd NUMERIC(8,6) DEFAULT 0;
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asx_earnings_ticker_period_unique') THEN
         ALTER TABLE asx_earnings ADD CONSTRAINT asx_earnings_ticker_period_unique UNIQUE (ticker, period);
     END IF;

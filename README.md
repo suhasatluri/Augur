@@ -10,10 +10,11 @@ official earnings PDFs, runs a multi-round debate, returns a probability
 distribution of earnings beat/miss before the company reports.
 
 ## Status
-V1.2 — proprietary ASX data pipeline complete. Augur now reads official
-Appendix 4D/4E PDFs directly from ASX announcements and company IR pages.
-Company intel harvester fetches quarterly updates and investor presentations
-as leading indicators between reporting seasons.
+V1.2 — proprietary ASX data pipeline complete. Admin dashboard live with
+token cost tracking, daily activity, and Grafana-style time range picker.
+Augur reads official Appendix 4D/4E PDFs directly from ASX announcements
+and company IR pages. Company intel harvester fetches quarterly updates and
+investor presentations as leading indicators between reporting seasons.
 
 Live at [augur.vercel.app](https://augur.vercel.app)
 
@@ -71,7 +72,7 @@ yfinance ──→ current prices ─┤
 
 ## Stack
 - Python FastAPI · Neon PostgreSQL · Claude API
-- Next.js 14 · Cloudflare R2 · Railway
+- Next.js 14 · Cloudflare R2 · Railway · Upstash Redis
 - ASX Markit Digital API · yfinance · curl_cffi
 
 ## Architecture
@@ -81,6 +82,7 @@ yfinance ──→ current prices ─┤
 - **negotiation_runner/** — 3-round structured debate with moderator agent
 - **negotiation_runner/moderator.py** — structural moderator between rounds: extracts top arguments, challenges outliers, flags high-conviction dissenters, tracks swing factors
 - **prediction_synthesiser/** — final verdict with confidence intervals and moderator-identified swing factors
+- **admin dashboard** — protected `/admin` page with token cost breakdown (Sonnet/Haiku), daily activity, top tickers, recent simulations, feedback stats, Grafana-style time range picker
 
 ## Licence
 BSL 1.1 — free for non-commercial use.

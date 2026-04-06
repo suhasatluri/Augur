@@ -8,9 +8,9 @@ Augur is a swarm intelligence platform for ASX earnings prediction. 50 autonomou
 
 ```
 POST /simulate → augur_api.py → pipeline.py →
-  seed_harvester (6hr cache → yfinance + Perplexity + ASX PDFs + company IR) →
+  seed_harvester (6hr cache → yfinance + Perplexity + ASX PDFs + ASIC + Market Index) →
   persona_forge (50 agents, parallel, bias-anchored) →
-  negotiation_runner (3 rounds) →
+  negotiation_runner (3 rounds + moderator between rounds) →
   prediction_synthesiser → results in Neon
 ```
 
@@ -20,9 +20,10 @@ POST /simulate → augur_api.py → pipeline.py →
 | Database | Neon PostgreSQL |
 | Frontend | Next.js 14 on Vercel |
 | Storage | Cloudflare R2 (seed cache) |
+| Queue | Upstash Redis (job queue) |
 | Monitoring | Sentry (error tracking + performance) |
 | LLM | Claude API (Sonnet for agents, Haiku for summaries) |
-| Data | yfinance + Perplexity Sonar + ASX Appendix 4D/4E PDFs |
+| Data | yfinance + Perplexity Sonar + ASX Appendix 4D/4E PDFs + ASIC + Market Index |
 
 ## Project structure
 
@@ -55,10 +56,10 @@ augur/
 │   ├── runner.py                   # 3-round debate engine
 │   └── moderator.py                # Structural moderator between rounds (Haiku)
 ├── db/
-│   ├── schema.py                   # Neon schema (11 tables, 8 indexes)
+│   ├── schema.py                   # Neon schema (13 tables, 10+ indexes, token cost tracking)
 │   └── retention.py                # Retention policy (7d failed, 24h batch)
 ├── frontend/                       # Next.js 14 App Router
-│   ├── src/app/                    # Pages (/, /about, /simulation/[jobId])
+│   ├── src/app/                    # Pages (/, /about, /simulation/[jobId], /admin)
 │   ├── sentry.client.config.ts     # Sentry frontend error tracking
 │   └── sentry.server.config.ts     # Sentry server-side error tracking
 ├── docs/
@@ -121,8 +122,9 @@ npm run dev
 | `STORAGE_ACCESS_KEY` | No | R2 access key |
 | `STORAGE_SECRET_KEY` | No | R2 secret key |
 | `SENTRY_DSN_BACKEND` | No | Sentry error tracking DSN |
+| `ADMIN_SECRET` | No | Protects `/admin/stats` endpoint |
 
-`STORAGE_*` and `SENTRY_*` vars are optional for local development. Without R2, seed caching uses the Neon `seed_data` JSONB column. Without Sentry, errors log to console only.
+`STORAGE_*`, `SENTRY_*`, and `ADMIN_SECRET` vars are optional for local development. Without R2, seed caching uses the Neon `seed_data` JSONB column. Without Sentry, errors log to console only.
 
 ## Running tests
 

@@ -18,6 +18,28 @@ logger = logging.getLogger(__name__)
 _BASE_URL = "https://api.perplexity.ai/chat/completions"
 _MODEL = "sonar"
 
+# Module-level accumulator — reset per simulation in pipeline.py
+_session_usage = {
+    "requests": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cost_usd": 0.0,
+}
+
+
+def reset_session_usage():
+    global _session_usage
+    _session_usage = {
+        "requests": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+    }
+
+
+def get_session_usage() -> dict:
+    return dict(_session_usage)
+
 _FINANCIAL_NEWS_PROMPT = """You are a financial analyst assistant.
 Research {ticker} (ASX:{ticker}) and provide a structured analysis of the last 30 days.
 
@@ -117,6 +139,23 @@ class PerplexityHarvester:
             raw = data["choices"][0]["message"]["content"]
             result = _parse_json(raw)
 
+            # Capture token usage for cost tracking
+            usage = data.get("usage", {})
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            # $0.005 flat + $1/M input + $1/M output
+            request_cost = (
+                0.005
+                + prompt_tokens / 1_000_000 * 1.00
+                + completion_tokens / 1_000_000 * 1.00
+            )
+
+            # Update module-level session accumulator
+            _session_usage["requests"] += 1
+            _session_usage["prompt_tokens"] += prompt_tokens
+            _session_usage["completion_tokens"] += completion_tokens
+            _session_usage["cost_usd"] += request_cost
+
             # Add API-level citations if present
             citations = data.get("citations", [])
             if citations and "sources_cited" not in result:
@@ -126,7 +165,13 @@ class PerplexityHarvester:
 
             result["_ticker"] = ticker
             result["_model"] = data.get("model", _MODEL)
-            result["_cost"] = data.get("usage", {}).get("cost", {}).get("total_cost")
+            result["_cost"] = round(request_cost, 6)
+            result["_usage"] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "estimated_cost_usd": round(request_cost, 6),
+                "model": _MODEL,
+            }
 
             logger.info(
                 f"[perplexity] {ticker}: sentiment={result.get('analyst_sentiment')}, "
