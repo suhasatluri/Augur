@@ -148,7 +148,7 @@ async def _try_perplexity(
                     "max_tokens": 300,
                     "temperature": 0.1,
                 },
-                timeout=20,
+                timeout=8,
             )
 
         resp = await asyncio.get_event_loop().run_in_executor(None, do_request)
@@ -252,15 +252,20 @@ async def refresh_earnings_calendar(
 
         company_name = known_names.get(ticker, f"{ticker} Ltd")
 
-        # Try yfinance first
-        yf_result = await _try_yfinance(ticker)
+        async def _do_ticker():
+            yf_r = await _try_yfinance(ticker)
+            px_r = None
+            if yf_r is None or ticker in _LARGE_CAPS:
+                px_r = await _try_perplexity(ticker, company_name)
+                await asyncio.sleep(1.0)
+            return yf_r, px_r
 
-        # Try Perplexity if yfinance failed OR as cross-check for large caps
-        px_result = None
-        if yf_result is None or ticker in _LARGE_CAPS:
-            px_result = await _try_perplexity(ticker, company_name)
-            # Brief pause to respect rate limits
-            await asyncio.sleep(1.0)
+        try:
+            yf_result, px_result = await asyncio.wait_for(_do_ticker(), timeout=15.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"[calendar] {ticker}: timeout — skipping")
+            stats["no_data"] += 1
+            continue
 
         # Determine final date and confidence
         final_date = None
