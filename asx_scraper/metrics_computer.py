@@ -10,6 +10,46 @@ from db.schema import get_pool
 logger = logging.getLogger(__name__)
 
 
+def calc_beat_rate(rows: list) -> Optional[float]:
+    """Fraction of rows with beat_miss=='BEAT' among rows with a known outcome.
+
+    Returns None if no rows have a known (BEAT/MISS/INLINE) outcome.
+    Each row must support r["beat_miss"].
+    """
+    known = [r for r in rows if r["beat_miss"] in ("BEAT", "MISS", "INLINE")]
+    if not known:
+        return None
+    return sum(1 for r in known if r["beat_miss"] == "BEAT") / len(known)
+
+
+def compute_mgmt_credibility(
+    beat_rate_4q: Optional[float],
+    beat_rate_8q: Optional[float],
+    guidance_delivery_rate: Optional[float],
+) -> Optional[float]:
+    """Weighted credibility: 0.5*beat_4q + 0.3*beat_8q + 0.2*gdr (gdr default 0.5)."""
+    if beat_rate_4q is None or beat_rate_8q is None:
+        return None
+    gdr = guidance_delivery_rate if guidance_delivery_rate is not None else 0.5
+    return round(beat_rate_4q * 0.5 + beat_rate_8q * 0.3 + gdr * 0.2, 3)
+
+
+def data_confidence_tier(pdf_count: int, total_rows: int) -> str:
+    """HIGH if >=6 PDF-sourced rows, MED if >=4 total rows, else LOW."""
+    if pdf_count >= 6:
+        return "HIGH"
+    if total_rows >= 4:
+        return "MED"
+    return "LOW"
+
+
+def is_suspect_npat(npat_aud_m: Optional[float], mi_npat: Optional[float]) -> bool:
+    """True if PDF NPAT is <10% of the Market Index reference (likely unit error)."""
+    if npat_aud_m is None or mi_npat is None or float(mi_npat) <= 0:
+        return False
+    return abs(float(npat_aud_m) / float(mi_npat)) < 0.1
+
+
 class MetricsComputer:
     """Computes derived metrics from asx_earnings. Runs after each new result."""
 
@@ -33,19 +73,17 @@ class MetricsComputer:
                     ORDER BY reporting_date DESC
                 """, ticker)
 
-                # Sanity check: flag rows where NPAT is >3x off from Market Index
-                if mi_npat and float(mi_npat) > 0:
-                    for r in rows:
-                        npat = r["npat_aud_m"]
-                        if npat is not None and abs(float(npat) / float(mi_npat)) < 0.1:
-                            await conn.execute(
-                                "UPDATE asx_earnings SET data_confidence = 'LOW_SUSPECT' WHERE id = $1",
-                                r["id"],
-                            )
-                            logger.warning(
-                                f"[metrics] {ticker}: flagged suspect NPAT=${npat}M "
-                                f"(MI reference=${float(mi_npat):.0f}M)"
-                            )
+                # Sanity check: flag rows where NPAT is >10x off from Market Index
+                for r in rows:
+                    if is_suspect_npat(r["npat_aud_m"], mi_npat):
+                        await conn.execute(
+                            "UPDATE asx_earnings SET data_confidence = 'LOW_SUSPECT' WHERE id = $1",
+                            r["id"],
+                        )
+                        logger.warning(
+                            f"[metrics] {ticker}: flagged suspect NPAT=${r['npat_aud_m']}M "
+                            f"(MI reference=${float(mi_npat):.0f}M)"
+                        )
 
                 # Exclude suspect rows from beat rate computation
                 rows = [r for r in rows if r["data_confidence"] != "LOW_SUSPECT"]
@@ -55,13 +93,6 @@ class MetricsComputer:
                     return {"ticker": ticker, "error": "no earnings data"}
 
                 total = len(rows)
-
-                # Beat rates
-                def calc_beat_rate(subset):
-                    known = [r for r in subset if r["beat_miss"] in ("BEAT", "MISS", "INLINE")]
-                    if not known:
-                        return None
-                    return sum(1 for r in known if r["beat_miss"] == "BEAT") / len(known)
 
                 beat_rate_8q = calc_beat_rate(rows[:8])
                 beat_rate_4q = calc_beat_rate(rows[:4])
@@ -73,23 +104,12 @@ class MetricsComputer:
                 # Guidance delivery rate (placeholder — requires commentary analysis)
                 guidance_delivery_rate = None
 
-                # Management credibility score
-                mgmt_credibility = None
-                if beat_rate_4q is not None and beat_rate_8q is not None:
-                    gdr = guidance_delivery_rate if guidance_delivery_rate is not None else 0.5
-                    mgmt_credibility = round(
-                        beat_rate_4q * 0.5 + beat_rate_8q * 0.3 + gdr * 0.2,
-                        3,
-                    )
+                mgmt_credibility = compute_mgmt_credibility(
+                    beat_rate_4q, beat_rate_8q, guidance_delivery_rate
+                )
 
-                # Data confidence
                 pdf_count = sum(1 for r in rows if r["data_source"] == "pdf")
-                if pdf_count >= 6:
-                    data_confidence = "HIGH"
-                elif total >= 4:
-                    data_confidence = "MED"
-                else:
-                    data_confidence = "LOW"
+                data_confidence = data_confidence_tier(pdf_count, total)
 
                 # Upsert
                 await conn.execute("""

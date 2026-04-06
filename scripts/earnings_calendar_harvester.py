@@ -201,6 +201,79 @@ async def _try_perplexity(
         return None
 
 
+def merge_sources(
+    yf_result: Optional[tuple],
+    px_result: Optional[tuple],
+    agree_threshold_days: int = 7,
+) -> Optional[dict]:
+    """Reconcile yfinance + Perplexity results into a single calendar entry.
+
+    Inputs:
+      yf_result: (date, report_type) or None
+      px_result: (date, report_type, confidence, raw_text) or None
+
+    Returns dict with keys (final_date, final_type, final_confidence, final_source,
+    raw_text, bucket) or None if both inputs are None.
+
+    `bucket` is one of: "both_agree", "yfinance", "perplexity" — used by callers
+    for stats accounting.
+
+    Rules:
+      - Both present and within `agree_threshold_days` → high confidence,
+        source="yfinance+perplexity", prefer Perplexity's exact date.
+      - Both present but disagree → fall back to yfinance, medium confidence.
+      - yfinance only → medium confidence.
+      - Perplexity only → confidence capped at "medium" (never "high" without corroboration).
+    """
+    if yf_result is None and px_result is None:
+        return None
+
+    if yf_result and px_result:
+        yf_date, yf_type = yf_result
+        px_date, px_type, px_conf, px_raw = px_result
+        delta = abs((yf_date - px_date).days)
+        if delta <= agree_threshold_days:
+            return {
+                "final_date": px_date,
+                "final_type": px_type or yf_type,
+                "final_confidence": "high",
+                "final_source": "yfinance+perplexity",
+                "raw_text": px_raw,
+                "bucket": "both_agree",
+            }
+        return {
+            "final_date": yf_date,
+            "final_type": yf_type,
+            "final_confidence": "medium",
+            "final_source": "yfinance",
+            "raw_text": None,
+            "bucket": "yfinance",
+        }
+
+    if yf_result:
+        yf_date, yf_type = yf_result
+        return {
+            "final_date": yf_date,
+            "final_type": yf_type,
+            "final_confidence": "medium",
+            "final_source": "yfinance",
+            "raw_text": None,
+            "bucket": "yfinance",
+        }
+
+    # Perplexity only
+    px_date, px_type, px_conf, px_raw = px_result
+    final_conf = "medium" if px_conf == "high" else px_conf
+    return {
+        "final_date": px_date,
+        "final_type": px_type,
+        "final_confidence": final_conf,
+        "final_source": "perplexity",
+        "raw_text": px_raw,
+        "bucket": "perplexity",
+    }
+
+
 async def refresh_earnings_calendar(
     conn,
     tickers_override: Optional[list[str]] = None,
@@ -267,48 +340,20 @@ async def refresh_earnings_calendar(
             stats["no_data"] += 1
             continue
 
-        # Determine final date and confidence
-        final_date = None
-        final_type = None
-        final_confidence = "medium"
-        final_source = None
-        raw_text = None
-
-        if yf_result and px_result:
-            yf_date, yf_type = yf_result
-            px_date, px_type, px_conf, px_raw = px_result
-            delta = abs((yf_date - px_date).days)
-            if delta <= 7:
-                # Both agree — high confidence, prefer Perplexity's exact date
-                final_date = px_date
-                final_type = px_type or yf_type
-                final_confidence = "high"
-                final_source = "yfinance+perplexity"
-                raw_text = px_raw
-                stats["both_agree"] += 1
-            else:
-                # Disagree — use yfinance, medium confidence
-                final_date = yf_date
-                final_type = yf_type
-                final_confidence = "medium"
-                final_source = "yfinance"
-                stats["yfinance_hits"] += 1
-        elif yf_result:
-            final_date, final_type = yf_result
-            final_confidence = "medium"
-            final_source = "yfinance"
-            stats["yfinance_hits"] += 1
-        elif px_result:
-            final_date, final_type, final_confidence, raw_text = px_result
-            # Cap Perplexity-only confidence at medium
-            if final_confidence == "high":
-                final_confidence = "medium"
-            final_source = "perplexity"
-            stats["perplexity_hits"] += 1
-        else:
+        merged = merge_sources(yf_result, px_result)
+        if merged is None:
             stats["no_data"] += 1
             logger.info(f"[calendar] {ticker}: no data from either source")
             continue
+
+        final_date = merged["final_date"]
+        final_type = merged["final_type"]
+        final_confidence = merged["final_confidence"]
+        final_source = merged["final_source"]
+        raw_text = merged["raw_text"]
+        stats[{"both_agree": "both_agree",
+               "yfinance": "yfinance_hits",
+               "perplexity": "perplexity_hits"}[merged["bucket"]]] += 1
 
         # Upsert — never overwrite confirmed entries. Retry once on connection drop.
         upsert_sql = """INSERT INTO asx_calendar

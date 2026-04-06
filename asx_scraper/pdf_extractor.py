@@ -207,7 +207,7 @@ def find_earnings_pdfs_markit(ticker: str) -> list[dict]:
             f"{MARKIT_BASE}/{ticker}/announcements?count=20",
             headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
         )
-        with __import__("urllib.request").urlopen(req, context=ctx, timeout=15) as resp:
+        with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         logger.debug(f"[pdf] Markit API failed for {ticker}: {e}")
