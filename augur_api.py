@@ -64,7 +64,7 @@ app.add_middleware(
         "http://localhost:3000",
     ],
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["X-API-Key", "Content-Type"],
+    allow_headers=["X-API-Key", "Content-Type", "X-Admin-Secret"],
 )
 
 
