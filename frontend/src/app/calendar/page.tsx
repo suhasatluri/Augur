@@ -246,7 +246,7 @@ export default function CalendarPage() {
 
                         {/* Run simulation */}
                         <a
-                          href={`/?ticker=${entry.ticker}`}
+                          href={`/?ticker=${entry.ticker}&date=${date}`}
                           className="font-mono text-[9px] tracking-widest uppercase border border-surface-border text-muted hover:border-gold/50 hover:text-gold px-3 py-1 transition rounded shrink-0"
                         >
                           Simulate

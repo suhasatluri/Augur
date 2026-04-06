@@ -18,10 +18,12 @@ function HomeInner() {
   const [error, setError] = useState("");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
 
-  // Pre-fill ticker from URL param (e.g. /?ticker=BHP from /calendar page)
+  // Pre-fill ticker + date from URL params (e.g. /?ticker=BHP&date=2026-04-22 from /calendar page)
   useEffect(() => {
     const t = searchParams.get("ticker");
+    const d = searchParams.get("date");
     if (t) setTicker(t.toUpperCase());
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setReportingDate(d);
   }, [searchParams]);
 
   const fetchActivity = useCallback(() => {
