@@ -100,6 +100,21 @@ class NegotiationRunner:
         self.moderator = ModeratorAgent(self.client)
         self._outlier_map: dict[str, str] = {}
         self._final_swing_factors: list[str] = []
+        self._token_counts = {
+            "sonnet_input": 0, "sonnet_output": 0,
+            "haiku_input": 0, "haiku_output": 0,
+        }
+
+    @property
+    def token_summary(self) -> dict:
+        tc = self._token_counts
+        cost = (
+            tc["sonnet_input"] / 1_000_000 * 3.00
+            + tc["sonnet_output"] / 1_000_000 * 15.00
+            + tc["haiku_input"] / 1_000_000 * 0.25
+            + tc["haiku_output"] / 1_000_000 * 1.25
+        )
+        return {**tc, "estimated_cost_usd": round(cost, 4)}
 
     async def run(self, simulation_id: str, ticker: str, seed_summaries: list[str] | None = None, reporting_date: str | None = None) -> SimulationResult:
         """Execute a full negotiation simulation."""
@@ -296,6 +311,9 @@ class NegotiationRunner:
             messages=[{"role": "user", "content": prompt}],
             timeout=60.0,
         )
+        if hasattr(message, "usage"):
+            self._token_counts["haiku_input"] += message.usage.input_tokens
+            self._token_counts["haiku_output"] += message.usage.output_tokens
         return message.content[0].text.strip()
 
     async def _debate_archetype_batch(
@@ -338,6 +356,9 @@ class NegotiationRunner:
             messages=[{"role": "user", "content": prompt}],
             timeout=120.0,
         )
+        if hasattr(message, "usage"):
+            self._token_counts["sonnet_input"] += message.usage.input_tokens
+            self._token_counts["sonnet_output"] += message.usage.output_tokens
 
         raw = message.content[0].text
         try:

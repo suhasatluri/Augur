@@ -255,6 +255,19 @@ END $$;
 -- Migration: add market signal columns to asx_metrics
 DO $$
 BEGIN
+    -- Token tracking + simulation quality columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'simulations' AND column_name = 'input_tokens_sonnet') THEN
+        ALTER TABLE simulations
+            ADD COLUMN input_tokens_sonnet INTEGER DEFAULT 0,
+            ADD COLUMN output_tokens_sonnet INTEGER DEFAULT 0,
+            ADD COLUMN input_tokens_haiku INTEGER DEFAULT 0,
+            ADD COLUMN output_tokens_haiku INTEGER DEFAULT 0,
+            ADD COLUMN estimated_cost_usd NUMERIC(8,4) DEFAULT 0,
+            ADD COLUMN convergence_score NUMERIC(5,3),
+            ADD COLUMN duration_seconds INTEGER,
+            ADD COLUMN rounds_completed INTEGER;
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'asx_earnings_ticker_period_unique') THEN
         ALTER TABLE asx_earnings ADD CONSTRAINT asx_earnings_ticker_period_unique UNIQUE (ticker, period);
     END IF;

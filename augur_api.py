@@ -495,3 +495,88 @@ async def health():
         neon_connected=neon_ok,
         active_jobs=active,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin Dashboard
+# ---------------------------------------------------------------------------
+
+_ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
+
+
+@app.get("/admin/stats")
+async def admin_stats(x_admin_secret: Optional[str] = Header(None, alias="X-Admin-Secret")):
+    """Protected admin stats endpoint."""
+    if not _ADMIN_SECRET or x_admin_secret != _ADMIN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    import decimal
+
+    def _row(row):
+        return {k: (float(v) if isinstance(v, decimal.Decimal) else str(v) if hasattr(v, "isoformat") else v) for k, v in dict(row).items()}
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        totals = await conn.fetchrow("""
+            SELECT COUNT(*) AS total_simulations,
+                   COUNT(DISTINCT ticker) AS unique_tickers,
+                   COALESCE(SUM(estimated_cost_usd), 0) AS total_cost_usd,
+                   COALESCE(SUM(input_tokens_sonnet + output_tokens_sonnet), 0) AS total_sonnet_tokens,
+                   COALESCE(SUM(input_tokens_haiku + output_tokens_haiku), 0) AS total_haiku_tokens,
+                   COALESCE(AVG(duration_seconds), 0) AS avg_duration_s,
+                   COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost_usd,
+                   COALESCE(AVG(seed_quality), 0) AS avg_seed_quality,
+                   COUNT(*) FILTER (WHERE status = 'complete') AS completed,
+                   COUNT(*) FILTER (WHERE status = 'failed') AS failed
+            FROM simulations
+        """)
+
+        daily = await conn.fetch("""
+            SELECT DATE(created_at) AS date, COUNT(*) AS simulations,
+                   COALESCE(SUM(estimated_cost_usd), 0) AS cost_usd
+            FROM simulations WHERE created_at > NOW() - INTERVAL '30 days'
+            GROUP BY DATE(created_at) ORDER BY date DESC
+        """)
+
+        top_tickers = await conn.fetch("""
+            SELECT ticker, COUNT(*) AS simulations,
+                   COALESCE(SUM(estimated_cost_usd), 0) AS total_cost,
+                   COALESCE(AVG(estimated_cost_usd), 0) AS avg_cost,
+                   COALESCE(AVG(seed_quality), 0) AS avg_quality,
+                   MAX(created_at) AS last_run
+            FROM simulations WHERE status = 'complete'
+            GROUP BY ticker ORDER BY simulations DESC LIMIT 20
+        """)
+
+        token_breakdown = await conn.fetchrow("""
+            SELECT COALESCE(SUM(input_tokens_sonnet), 0) AS sonnet_in,
+                   COALESCE(SUM(output_tokens_sonnet), 0) AS sonnet_out,
+                   COALESCE(SUM(input_tokens_haiku), 0) AS haiku_in,
+                   COALESCE(SUM(output_tokens_haiku), 0) AS haiku_out
+            FROM simulations
+        """)
+
+        recent = await conn.fetch("""
+            SELECT ticker, status, estimated_cost_usd,
+                   COALESCE(input_tokens_sonnet, 0) + COALESCE(output_tokens_sonnet, 0) AS sonnet_tokens,
+                   COALESCE(input_tokens_haiku, 0) + COALESCE(output_tokens_haiku, 0) AS haiku_tokens,
+                   duration_seconds, seed_quality, convergence_score, rounds_completed, created_at
+            FROM simulations ORDER BY created_at DESC LIMIT 50
+        """)
+
+        feedback = await conn.fetchrow("""
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE rating = 'positive') AS positive,
+                   COUNT(*) FILTER (WHERE rating = 'negative') AS negative,
+                   COUNT(*) FILTER (WHERE rating = 'neutral') AS unsure
+            FROM feedback
+        """)
+
+    return {
+        "totals": _row(totals),
+        "token_breakdown": _row(token_breakdown),
+        "daily": [_row(r) for r in daily],
+        "top_tickers": [_row(r) for r in top_tickers],
+        "recent": [_row(r) for r in recent],
+        "feedback": _row(feedback),
+    }

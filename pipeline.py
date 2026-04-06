@@ -259,6 +259,29 @@ async def _run_pipeline_inner(
     report = await synth.synthesise(simulation_id)
 
     elapsed = (time.monotonic() - start) * 1000
+
+    # Write token tracking + quality metrics
+    try:
+        tokens = runner.token_summary
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE simulations SET
+                    input_tokens_sonnet = $1, output_tokens_sonnet = $2,
+                    input_tokens_haiku = $3, output_tokens_haiku = $4,
+                    estimated_cost_usd = $5, convergence_score = $6,
+                    duration_seconds = $7, rounds_completed = $8
+                WHERE id = $9""",
+                tokens["sonnet_input"], tokens["sonnet_output"],
+                tokens["haiku_input"], tokens["haiku_output"],
+                tokens["estimated_cost_usd"],
+                neg_result.convergence_score,
+                int(elapsed / 1000),
+                neg_result.rounds_completed,
+                simulation_id,
+            )
+    except Exception as e:
+        logger.warning(f"[pipeline] Token tracking write failed: {e}")
+
     logger.info(f"[pipeline] Full pipeline complete in {elapsed/1000:.1f}s — verdict: {report.verdict}")
 
     return report
