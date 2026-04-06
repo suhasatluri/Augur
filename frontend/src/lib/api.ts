@@ -117,3 +117,21 @@ export async function getActivity(
   if (!res.ok) return [];
   return res.json();
 }
+
+export interface CalendarEntry {
+  ticker: string;
+  report_date: string;
+  report_type: string | null;
+  confirmed: boolean;
+  source: string | null;
+  confidence: string;
+  company_name: string | null;
+  sector: string | null;
+  last_verified: string | null;
+}
+
+export async function getCalendar(): Promise<CalendarEntry[]> {
+  const res = await fetch(`${API_URL}/calendar`);
+  if (!res.ok) return [];
+  return res.json();
+}

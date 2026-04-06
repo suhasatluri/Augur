@@ -498,6 +498,50 @@ async def health():
 
 
 # ---------------------------------------------------------------------------
+# Earnings Calendar
+# ---------------------------------------------------------------------------
+
+
+@app.get("/calendar")
+async def earnings_calendar():
+    """Upcoming ASX earnings dates. Public — no auth required."""
+    if not os.getenv("DATABASE_URL"):
+        return []
+
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT c.ticker, c.expected_reporting_date, c.result_type,
+                       c.confirmed, c.source, c.confidence, c.last_verified,
+                       a.company_name, a.sector
+                FROM asx_calendar c
+                LEFT JOIN asx_companies a ON c.ticker = a.ticker
+                WHERE c.expected_reporting_date >= CURRENT_DATE
+                ORDER BY c.expected_reporting_date ASC
+                LIMIT 50
+            """)
+    except Exception as e:
+        logger.error(f"[api] Calendar query failed: {e}")
+        return []
+
+    return [
+        {
+            "ticker": r["ticker"],
+            "report_date": r["expected_reporting_date"].isoformat(),
+            "report_type": r["result_type"],
+            "confirmed": r["confirmed"],
+            "source": r["source"],
+            "confidence": r["confidence"] or "medium",
+            "company_name": r["company_name"],
+            "sector": r["sector"],
+            "last_verified": r["last_verified"].isoformat() if r["last_verified"] else None,
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Admin Dashboard
 # ---------------------------------------------------------------------------
 

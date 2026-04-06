@@ -164,6 +164,9 @@ CREATE TABLE IF NOT EXISTS asx_calendar (
     result_type             TEXT,
     confirmed               BOOLEAN DEFAULT FALSE,
     source                  TEXT,
+    confidence              VARCHAR(10) DEFAULT 'medium',
+    raw_date_text           TEXT,
+    last_verified           TIMESTAMPTZ,
     created_at              TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (ticker, expected_reporting_date)
 );
@@ -315,6 +318,14 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_metrics' AND column_name = 'revenue_m') THEN
         ALTER TABLE asx_metrics ADD COLUMN revenue_m FLOAT;
+    END IF;
+
+    -- Earnings calendar confidence columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'asx_calendar' AND column_name = 'confidence') THEN
+        ALTER TABLE asx_calendar
+            ADD COLUMN confidence VARCHAR(10) DEFAULT 'medium',
+            ADD COLUMN raw_date_text TEXT,
+            ADD COLUMN last_verified TIMESTAMPTZ;
     END IF;
 END $$;
 """

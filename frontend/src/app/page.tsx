@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import TickerInput from "@/components/TickerInput";
 import VerdictBadge from "@/components/VerdictBadge";
+import EarningsCalendar from "@/components/EarningsCalendar";
 import { startSimulation, getActivity, ActivityItem } from "@/lib/api";
 
 const ACTIVITY_POLL = 60000; // 60s
@@ -109,6 +110,11 @@ export default function Home() {
           50 analysts debate an ASX earnings outcome in real time. See it happen.
         </p>
       </a>
+
+      {/* Earnings Calendar */}
+      <div className="max-w-2xl mx-auto">
+        <EarningsCalendar onTickerClick={setTicker} />
+      </div>
 
       {/* Community Activity */}
       <div className="max-w-2xl mx-auto">
