@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import statistics
 from dataclasses import dataclass, field
 from typing import Optional
@@ -70,7 +71,9 @@ Your tasks:
    List agent IDs whose conviction > 0.7 AND whose position differs from the mean by > 0.25.
    These are genuine contrarians whose reasoning deserves explicit attention.
 
-Return ONLY valid JSON:
+Return ONLY a raw JSON object. No markdown code fences. No preamble. No explanation.
+Start your response with {{ and end with }}.
+The JSON must be complete and valid:
 {{
   "bull_arguments": ["string", "string", "string"],
   "bear_arguments": ["string", "string", "string"],
@@ -79,9 +82,7 @@ Return ONLY valid JSON:
   "outlier_challenge": "1-2 sentence challenge for outlier agents",
   "dissent_agent_ids": ["uuid", ...],
   "dissent_summary": "1 sentence summarising the high-conviction minority view"
-}}
-
-No markdown. No preamble. JSON only."""
+}}"""
 
 
 MODERATOR_BRIEF_TEMPLATE = """
@@ -105,6 +106,42 @@ HIGH-CONVICTION MINORITY VIEW:
 {dissent_summary}
 (Held by {count} agent(s) with strong conviction. Explicitly consider whether their evidence changes your view.)
 """
+
+
+def _extract_partial_json(text: str) -> dict | None:
+    """Attempts to salvage a truncated JSON response.
+
+    Haiku sometimes truncates mid-JSON when it hits the token limit.
+    Tries closing brace permutations, then regex-extracts complete fields.
+    """
+    # Strategy 1: try closing the JSON object
+    for closing in [']}', '"}]}', '"]}', '"}', '}']:
+        try:
+            return json.loads(text + closing)
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 2: extract individual complete fields via regex
+    result: dict = {}
+
+    # Extract string arrays like "key": ["a", "b"]
+    array_pattern = re.compile(r'"(\w+)"\s*:\s*\[((?:[^[\]]*"[^"]*"[^[\]]*)*)\]')
+    for match in array_pattern.finditer(text):
+        key = match.group(1)
+        try:
+            val = json.loads(f"[{match.group(2)}]")
+            result[key] = val
+        except json.JSONDecodeError:
+            pass
+
+    # Extract string values like "key": "value"
+    str_pattern = re.compile(r'"(\w+)"\s*:\s*"([^"]*)"')
+    for match in str_pattern.finditer(text):
+        key = match.group(1)
+        if key not in result:
+            result[key] = match.group(2)
+
+    return result if result else None
 
 
 class ModeratorAgent:
@@ -135,14 +172,14 @@ class ModeratorAgent:
         bear_count = sum(1 for p in probs if p < 0.4)
         neutral_count = len(probs) - bull_count - bear_count
 
-        # Build reasoning block for Claude
+        # Build reasoning block — cap each at 150 chars to prevent prompt bloat
         reasoning_lines = []
         for r in sorted(round_results, key=lambda x: x.probability, reverse=True):
             agent = agent_map.get(r.agent_id)
             conv = agent.conviction if agent else 0.5
             arch = agent.archetype if agent else "?"
             reasoning_lines.append(
-                f"[id={r.agent_id} P={r.probability:.3f} conv={conv:.2f} arch={arch}] {r.reasoning}"
+                f"[id={r.agent_id} P={r.probability:.3f} conv={conv:.2f} arch={arch}] {r.reasoning[:150]}"
             )
 
         prompt = ARGUMENT_EXTRACTION_PROMPT.format(
@@ -160,14 +197,38 @@ class ModeratorAgent:
         try:
             response = await self.client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=1000,
+                max_tokens=2000,
                 messages=[{"role": "user", "content": prompt}],
                 timeout=60.0,
+                stop_sequences=["```"],
             )
             text = response.content[0].text.strip()
+
+            # Strip markdown fences if present
             if text.startswith("```"):
-                text = "\n".join(text.split("\n")[1:-1])
-            data = json.loads(text)
+                lines = text.split("\n")
+                text = "\n".join(lines[1:])
+                if text.rstrip().endswith("```"):
+                    text = text.rstrip()[:-3]
+                text = text.strip()
+
+            # Try direct parse
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                # Response may be truncated — try partial recovery
+                data = _extract_partial_json(text)
+                if data is None:
+                    logger.warning(
+                        f"[moderator] Round {round_number} JSON parse failed for {ticker} "
+                        f"— response truncated at {len(text)} chars"
+                    )
+                    return ModeratorOutput(round_number=round_number)
+                logger.info(
+                    f"[moderator] Round {round_number} partial JSON recovery: "
+                    f"extracted {len(data)} fields"
+                )
+
         except Exception as e:
             logger.warning(f"[moderator] Round {round_number} extraction failed: {e}")
             return ModeratorOutput(round_number=round_number)
