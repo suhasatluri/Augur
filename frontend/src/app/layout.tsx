@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import NavBar from "@/components/NavBar";
 
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
@@ -30,24 +31,7 @@ export default function RootLayout({
         className={`${cormorant.variable} ${jetbrains.variable} font-mono antialiased bg-background text-foreground`}
       >
         <div className="min-h-screen flex flex-col">
-          <header className="border-b border-surface-border px-6 py-4 flex items-center justify-between">
-            <a href="/" className="flex items-center gap-3">
-              <span className="font-heading text-2xl font-bold text-gold">
-                AUGUR
-              </span>
-              <span className="text-xs text-muted tracking-widest uppercase">
-                ASX Earnings Predictor
-              </span>
-            </a>
-            <div className="flex items-center gap-5">
-              <a href="/about" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
-                How it works
-              </a>
-              <a href="/#feedback" className="text-xs text-muted tracking-widest uppercase hover:text-gold transition">
-                Feedback
-              </a>
-            </div>
-          </header>
+          <NavBar />
           <main className="flex-1 px-6 py-8 max-w-5xl mx-auto w-full">
             {children}
           </main>

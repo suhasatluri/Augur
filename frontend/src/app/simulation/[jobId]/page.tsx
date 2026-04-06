@@ -216,12 +216,23 @@ export default function SimulationPage() {
 
       {/* Feedback */}
       {isDone && result && (
-        <FeedbackForm
-          simulationId={data.simulation_id}
-          ticker={data.ticker}
-          verdict={result.verdict}
-          page="results"
-        />
+        <div>
+          <FeedbackForm
+            simulationId={data.simulation_id}
+            ticker={data.ticker}
+            verdict={result.verdict}
+            page="results"
+          />
+          <div className="text-center mt-2">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("open-feedback", { detail: { ticker: data.ticker } }))}
+              className="font-mono text-[9px] text-muted hover:text-gold underline underline-offset-2 transition bg-transparent border-none cursor-pointer"
+            >
+              Leave detailed feedback →
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Back link */}

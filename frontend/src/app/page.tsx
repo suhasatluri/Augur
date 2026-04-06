@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import TickerInput from "@/components/TickerInput";
 import VerdictBadge from "@/components/VerdictBadge";
-import FeedbackForm from "@/components/FeedbackForm";
 import { startSimulation, getActivity, ActivityItem } from "@/lib/api";
 
 const ACTIVITY_POLL = 60000; // 60s
@@ -167,10 +166,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Feedback */}
-      <div id="feedback" className="max-w-xl mx-auto pt-10">
-        <FeedbackForm page="homepage" />
-      </div>
     </div>
   );
 }
