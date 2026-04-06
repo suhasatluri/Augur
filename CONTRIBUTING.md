@@ -65,6 +65,8 @@ augur/
 ├── docs/
 │   ├── Augur_Explainer.html        # GitHub Pages explainer page
 │   └── Augur__The_Power_of_a_Debate.mp4  # Explainer video (37MB)
+├── scripts/
+│   └── earnings_calendar_harvester.py  # Dual-source calendar (yfinance + Perplexity)
 ├── tests/
 │   ├── unit/                       # Fast unit tests (no API calls)
 │   ├── batch_test.py               # 20-ticker batch validation
@@ -162,7 +164,7 @@ Currently 5 archetypes: Bull, Bear, Quant, Risk, Retail (10 agents each). Sector
 `tests/unit/` covers core modules (seed quality, cache, persona forge, structured data). `asx_scraper/` and `seed_harvester/perplexity_harvester.py` need unit tests with mocked API responses.
 
 ### 5. Frontend
-Next.js 14 frontend in `frontend/src/app/`. Open areas: batch simulation UI, historical results view, earnings calendar, simulation comparison.
+Next.js 14 frontend in `frontend/src/app/`. Open areas: batch simulation UI, historical results view, simulation comparison.
 
 ## How to submit a PR
 

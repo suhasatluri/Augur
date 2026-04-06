@@ -39,7 +39,8 @@ prediction_synthesiser → verdict + swing factors → Neon
 - seed_harvester/harvester.py — two-layer cache
 - seed_harvester/slow_layer.py — yfinance + Sonnet
 - seed_harvester/fast_layer.py — Haiku sentiment + company intel + Perplexity news
-- seed_harvester/perplexity_harvester.py — Perplexity Sonar real-time financial news
+- seed_harvester/perplexity_harvester.py — Perplexity Sonar real-time financial news (module-level session cost accumulator)
+- scripts/earnings_calendar_harvester.py — dual-source earnings calendar refresh (yfinance + Perplexity Sonar)
 - seed_harvester/structured_data.py — 6-component ticker_bias_score (analyst, upside, growth, beat_rate, short_interest, director)
 - persona_forge/forge.py — 50 agent creation (5 archetypes forged in parallel via asyncio.gather)
 - negotiation_runner/runner.py — 3-round debate
@@ -50,7 +51,8 @@ prediction_synthesiser → verdict + swing factors → Neon
 - conftest.py — pytest root path setup
 - tests/batch_test.py — 20-ticker batch validation (--tickers flag for subset runs)
 - frontend/src/app/ — Next.js App Router pages
-- frontend/src/app/admin/page.tsx — Admin dashboard (token costs, daily activity, top tickers, feedback stats)
+- frontend/src/app/admin/page.tsx — Admin dashboard (token costs incl. Perplexity, daily activity, top tickers, feedback stats)
+- frontend/src/components/EarningsCalendar.tsx — Upcoming earnings on homepage with confidence dots
 - frontend/sentry.client.config.ts — Sentry frontend error tracking
 - frontend/sentry.server.config.ts — Sentry server-side error tracking
 - frontend/public/about.html — Full explainer page (How It Works) with embedded video
@@ -74,7 +76,7 @@ AUGUR_API_KEYS — comma-separated API keys
 STORAGE_ENDPOINT — Cloudflare R2 endpoint
 STORAGE_ACCESS_KEY — R2 access key
 STORAGE_SECRET_KEY — R2 secret key
-PERPLEXITY_API_KEY — Perplexity Sonar (real-time financial news in fast layer, ~$0.005/query)
+PERPLEXITY_API_KEY — Perplexity Sonar (real-time financial news + earnings calendar, ~$0.005/query)
 SENTRY_DSN_BACKEND — Sentry error tracking DSN (Railway)
 ADMIN_SECRET — protects /admin/stats endpoint (X-Admin-Secret header)
 FINNHUB_API_KEY — Finnhub.io (disabled, kept for potential US coverage)
@@ -97,6 +99,8 @@ NEXT_PUBLIC_API_URL — Backend API URL
 - Parallel persona forge via asyncio.gather() — all 50 agents forged simultaneously (5 archetypes x 10 agents, one Sonnet call each), saving ~25-30s per simulation
 - 6-hour seed cache — if ticker simulated in last 6hr, return cached seed from Neon (seed_data JSONB). Cache key is ticker only. Skips cache if seed quality < 0.6. BHP cache HIT confirmed at 124.5s vs 182s baseline
 - Phase 3 complete — target duration now 125-180s depending on cache HIT or MISS
+- Earnings calendar dual-source: yfinance primary (free, structured), Perplexity gap-fills where yfinance returns nothing. Top 15 large caps cross-checked by both. Both agree within 7 days → confidence=high. Never overwrites confirmed/manual entries. Cost ~$0.20/week
+- Perplexity cost tracking: module-level session accumulator in perplexity_harvester.py, reset per simulation. $0.005 flat + $1/M tokens input + $1/M tokens output
 
 ## Current Known Limitations
 - ASX 100 only (asx_scraper bootstrapped for top tickers)
@@ -132,6 +136,12 @@ python3 tests/batch_test.py --tickers XRO CSL BHP
 
 # Full 20-ticker batch (ask before running)
 python3 tests/batch_test.py
+
+# Earnings calendar refresh — specific tickers
+python3 -m scripts.earnings_calendar_harvester BHP XRO CBA
+
+# Earnings calendar refresh — all ASX 200
+python3 -m scripts.earnings_calendar_harvester
 ```
 
 ## GitHub Actions
@@ -151,10 +161,10 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 - DSNs: SENTRY_DSN_BACKEND (Railway), NEXT_PUBLIC_SENTRY_DSN (Vercel)
 
 ## Pages
-- / — Homepage (simulation form, community activity, video teaser)
+- / — Homepage (simulation form, earnings calendar, community activity, video teaser)
 - /about — Full explainer page (How It Works, embedded video from GitHub Pages CDN)
 - /simulation/[jobId] — Simulation progress + results
-- /admin — Admin dashboard (login via ADMIN_SECRET, Grafana-style time range picker, token cost breakdown, daily activity, top tickers, recent simulations, feedback stats)
+- /admin — Admin dashboard (login via ADMIN_SECRET, Grafana-style time range picker, token cost breakdown incl. Perplexity Sonar, daily activity, top tickers, recent simulations, feedback stats)
 - Explainer video: https://suhasatluri.github.io/Augur/Augur__The_Power_of_a_Debate.mp4
 - GitHub Pages explainer: https://suhasatluri.github.io/Augur/Augur_Explainer.html
 
@@ -164,8 +174,9 @@ GitHub Actions needs these secrets set in repository Settings -> Secrets:
 3. ~~Unit test suite (tests/unit/)~~ — DONE (23 tests)
 4. ~~ASX data pipeline~~ — DONE (PDFExtractor, IRHarvester, CompanyIntelHarvester)
 5. ~~ASX 100 bootstrap~~ — DONE (ASIC 89/100, Market Index 100/100, director signals for all)
-6. ~~Admin dashboard + token cost tracking~~ — DONE (GET /admin/stats, Grafana-style time picker, parallel queries + 60s cache)
-7. Outcome tracking (outcomes table exists, needs ingestion)
-8. User accounts + simulation history
-9. Schedule weekly asx_scraper refresh via GitHub Actions cron
-10. Email alerts for upcoming earnings
+6. ~~Admin dashboard + token cost tracking~~ — DONE (GET /admin/stats, Grafana-style time picker, Sonnet/Haiku/Perplexity cost breakdown)
+7. ~~Earnings calendar~~ — DONE (dual-source: yfinance + Perplexity, GET /calendar, homepage component with confidence dots)
+8. Outcome tracking (outcomes table exists, needs ingestion)
+9. User accounts + simulation history
+10. Schedule weekly asx_scraper + calendar refresh via GitHub Actions cron
+11. Email alerts for upcoming earnings

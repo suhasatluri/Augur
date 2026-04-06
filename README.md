@@ -11,7 +11,9 @@ distribution of earnings beat/miss before the company reports.
 
 ## Status
 V1.2 — proprietary ASX data pipeline complete. Admin dashboard live with
-token cost tracking, daily activity, and Grafana-style time range picker.
+token cost tracking (Sonnet/Haiku/Perplexity), daily activity, and
+Grafana-style time range picker. Earnings calendar with dual-source date
+discovery (yfinance + Perplexity Sonar) and confidence indicators.
 Augur reads official Appendix 4D/4E PDFs directly from ASX announcements
 and company IR pages. Company intel harvester fetches quarterly updates and
 investor presentations as leading indicators between reporting seasons.
@@ -64,7 +66,7 @@ yfinance ──→ current prices ─┤
 | IRHarvester | Earnings PDFs from company IR pages | Top 25 ASX |
 | CompanyIntelHarvester | Quarterly updates, investor presentations | Top 20 ASX |
 | ConsensusHarvester | Forward consensus EPS, beat/miss history | All ASX tickers |
-| Perplexity Sonar | Real-time financial news, analyst sentiment | All ASX tickers |
+| Perplexity Sonar | Real-time financial news, analyst sentiment, earnings calendar gap-fill | All ASX tickers |
 | Price Reaction Proxy | Beat/miss fallback from market response | All ASX tickers |
 | yfinance | Current prices, recommendations, growth | All ASX tickers |
 | ASIC Short Interest | Daily short position data | 669 ASX tickers |
@@ -82,7 +84,9 @@ yfinance ──→ current prices ─┤
 - **negotiation_runner/** — 3-round structured debate with moderator agent
 - **negotiation_runner/moderator.py** — structural moderator between rounds: extracts top arguments, challenges outliers, flags high-conviction dissenters, tracks swing factors
 - **prediction_synthesiser/** — final verdict with confidence intervals and moderator-identified swing factors
-- **admin dashboard** — protected `/admin` page with token cost breakdown (Sonnet/Haiku), daily activity, top tickers, recent simulations, feedback stats, Grafana-style time range picker
+- **scripts/** — earnings calendar harvester (dual-source: yfinance + Perplexity, confidence scoring)
+- **admin dashboard** — protected `/admin` page with token cost breakdown (Sonnet/Haiku/Perplexity), daily activity, top tickers, recent simulations, feedback stats, Grafana-style time range picker
+- **earnings calendar** — `/calendar` API + homepage component with confidence dots (green=multi-source, amber=single-source, red=estimated)
 
 ## Licence
 BSL 1.1 — free for non-commercial use.
